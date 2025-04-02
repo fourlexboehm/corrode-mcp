@@ -53,6 +53,7 @@ async fn main() {
     let mut line = String::new();
     let input = io::stdin();
     let mut logging_file = OpenOptions::new()
+        .create(true)
         .write(true)
         .append(true)
         .open("/tmp/mcp.jsonl")
@@ -190,7 +191,7 @@ async fn display_info(args: &Args) {
         if args.tools {
             println!(
                 r#"tools:
-- get_current_time_in_city: get current time in city
+- execute_bash: Execute a command using bash shell
 "#
             );
         }
