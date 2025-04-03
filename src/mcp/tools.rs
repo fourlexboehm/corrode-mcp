@@ -1,11 +1,13 @@
 use crate::mcp::types::*;
 use maplit::hashmap;
+use crate::mcp::treesitter;
 use rpc_router::{Handler, HandlerResult, RouterBuilder, RpcParams};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
+use std::env;
 
 /// register all tools to the router
 pub fn register_tools(router_builder: RouterBuilder) -> RouterBuilder {
@@ -15,6 +17,8 @@ pub fn register_tools(router_builder: RouterBuilder) -> RouterBuilder {
         .append_dyn("read_file", read_file.into_dyn())
         .append_dyn("edit_file", edit_file.into_dyn())
         .append_dyn("write_file", write_file.into_dyn())
+        .append_dyn("check", check_code.into_dyn())
+        .append_dyn("parse_code", parse_code.into_dyn())
 }
 
 pub async fn tools_list(_request: Option<ListToolsRequest>) -> HandlerResult<ListToolsResult> {
@@ -96,6 +100,39 @@ pub async fn tools_list(_request: Option<ListToolsRequest>) -> HandlerResult<Lis
                     },
                     required: vec!["file_path".to_string(), "content".to_string()],
                 },
+            },
+            Tool {
+                name: "check".to_string(),
+                description: Some("Check code for errors after editing. For Rust projects, runs 'cargo check' in the current working directory. This tool should be used directly after running edit_file to verify changes are valid.".to_string()),
+                input_schema: ToolInputSchema {
+                    type_name: "object".to_string(),
+                    properties: hashmap! {
+                        // No parameters needed as it uses current working directory
+                    },
+                    required: vec![],
+                },
+            },
+            Tool {
+                name: "parse_code".to_string(),
+                description: Some("Parse code using TreeSitter to extract function names, class definitions, and structure. Supports Rust, JavaScript, TypeScript, Python, Go, C, and C++.".to_string()),
+                input_schema: ToolInputSchema { 
+                    type_name: "object".to_string(),
+                    properties: hashmap! {
+                        "file_path".to_string() => ToolInputSchemaProperty {
+                            type_name: Some("string".to_owned()),
+                            description: Some("The path to the file to parse, relative to current working directory".to_owned()),
+                            enum_values: None,
+                        },
+                        "project_path".to_string() => ToolInputSchemaProperty {
+                            type_name: Some("string".to_owned()),
+                            description: Some("Optional project root path to analyze. If not provided, will use the file's directory.".to_owned()),
+                            enum_values: None,
+                        }
+                    },
+                    // We need file_path to determine a starting point,
+                    // but project_path is optional and will default to file_path's directory
+                    required: vec!["file_path".to_string()],
+                },
             }
         ],
         next_cursor: None,
@@ -143,6 +180,7 @@ pub struct CurrentTimeRequest {
     pub city: Option<String>,
 }
 
+    #[allow(dead_code)]
 pub async fn current_time(_request: CurrentTimeRequest) -> HandlerResult<CallToolResult> {
     let result = format!("Now: {}!", chrono::Local::now().to_rfc2822());
     Ok(CallToolResult {
@@ -157,7 +195,7 @@ pub struct ExecuteBashRequest {
 }
 
 pub async fn execute_bash(request: ExecuteBashRequest) -> HandlerResult<CallToolResult> {
-    let mut command = request.command.clone();
+    let command = request.command.clone();
     let mut result = String::new();
     let mut is_error = false;
     
@@ -197,6 +235,8 @@ pub async fn execute_bash(request: ExecuteBashRequest) -> HandlerResult<CallTool
         
         // Execute the command with the current working directory
         let output = Command::new("bash")
+        .env(key, val)
+            .arg("-l") // Run as a login shell to load full environment
             .current_dir(&current_dir)
             .arg("-c")
             .arg(cmd)
@@ -347,6 +387,193 @@ pub async fn write_file(request: WriteFileRequest) -> HandlerResult<CallToolResu
     }
 }
 
+#[derive(Deserialize, Serialize, RpcParams)]
+pub struct CheckRequest {}
+
+pub async fn check_code(_request: Option<CheckRequest>) -> HandlerResult<CallToolResult> {
+    // Get the current working directory
+    let current_dir = CURRENT_WORKING_DIR.lock().unwrap().clone();
+    
+    // Check if this is a Rust project by looking for Cargo.toml
+    let cargo_toml_path = current_dir.join("Cargo.toml");
+    if !cargo_toml_path.exists() {
+        return Ok(CallToolResult {
+            content: vec![CallToolResultContent::Text { 
+                text: format!("No Cargo.toml found in '{}'. This doesn't appear to be a Rust project.", current_dir.display()) 
+            }],
+            is_error: true,
+        });
+    }
+
+    // Execute 'cargo check' using the execute_bash tool
+    let bash_request = ExecuteBashRequest {
+        command: "cargo check".to_string(),
+    };
+    
+    execute_bash(bash_request).await
+}
+
+#[derive(Deserialize, Serialize, RpcParams)]
+pub struct ParseCodeRequest {
+    pub file_path: String,
+    pub project_path: Option<String>,
+}
+
+pub async fn parse_code(request: ParseCodeRequest) -> HandlerResult<CallToolResult> {
+    // Get the current working directory
+    let current_dir = CURRENT_WORKING_DIR.lock().unwrap().clone();
+
+    // Show path debug info
+    let mut diagnostic_info = String::new();
+    diagnostic_info.push_str(&format!("Current working directory: {}\n", current_dir.display()));
+    diagnostic_info.push_str(&format!("Requested file_path: {}\n", request.file_path));
+    if let Some(ref project_path) = request.project_path {
+        diagnostic_info.push_str(&format!("Requested project_path: {}\n", project_path));
+    }
+    
+    // Determine project directory
+    let project_dir = if let Some(ref project_path) = request.project_path {
+        // First, try treating project_path as absolute
+        let absolute_path = PathBuf::from(project_path);
+        if absolute_path.is_absolute() && absolute_path.exists() && absolute_path.is_dir() {
+            diagnostic_info.push_str("Using project_path as absolute path\n");
+            absolute_path
+        } else {
+            // Otherwise resolve relative to current directory
+            let resolved_path = resolve_path(&current_dir, project_path);
+            diagnostic_info.push_str(&format!("Resolved project_path to: {}\n", resolved_path.display()));
+            resolved_path
+        }
+    } else {
+        // If no project_path provided, use current directory
+        diagnostic_info.push_str("No project_path provided, using current directory\n");
+        current_dir.clone()
+    };
+    
+    // Check if project directory exists and is accessible
+    if !project_dir.exists() {
+        return Ok(CallToolResult {
+            content: vec![CallToolResultContent::Text { 
+                text: format!("Error: Project directory '{}' does not exist\n\nDiagnostic Info:\n{}", 
+                              project_dir.display(), diagnostic_info) 
+            }],
+            is_error: true,
+        });
+    }
+    
+    if !project_dir.is_dir() {
+        return Ok(CallToolResult {
+            content: vec![CallToolResultContent::Text { 
+                text: format!("Error: '{}' is not a directory\n\nDiagnostic Info:\n{}", 
+                              project_dir.display(), diagnostic_info) 
+            }],
+            is_error: true,
+        });
+    }
+    
+    // Resolve file path
+    let file_path = if request.project_path.is_some() {
+        // When project_path is specified, treat file_path as relative to project_dir
+        // Ensure we clean up the path by removing any leading slashes
+        let clean_path = request.file_path.trim_start_matches('/');
+        
+        // Handle special case where file_path starts with the project directory name
+        if let Some(proj_name) = project_dir.file_name() {
+            let proj_name_str = proj_name.to_string_lossy().to_string();
+            if clean_path.starts_with(&format!("{}/", proj_name_str)) {
+                // If file_path starts with project name followed by '/', strip it
+                let stripped_path = clean_path.strip_prefix(&format!("{}/", proj_name_str))
+                    .unwrap_or(clean_path);
+                    
+                diagnostic_info.push_str(&format!("Detected project name prefix in file_path, stripped to: {}\n", stripped_path));
+                project_dir.join(stripped_path)
+            } else {
+                diagnostic_info.push_str(&format!("Joining project_dir with file_path: {}\n", clean_path));
+                project_dir.join(clean_path)
+            }
+        } else {
+            diagnostic_info.push_str(&format!("Joining project_dir with file_path: {}\n", clean_path));
+            project_dir.join(clean_path)
+        }
+    } else {
+        // When no project_path is specified, use standard path resolution
+        let resolved_path = resolve_path(&current_dir, &request.file_path);
+        diagnostic_info.push_str(&format!("Resolved file_path to: {}\n", resolved_path.display()));
+        resolved_path
+    };
+    
+    diagnostic_info.push_str(&format!("Final file path: {}\n", file_path.display()));
+    diagnostic_info.push_str(&format!("Final project dir: {}\n", project_dir.display()));
+    
+    // Check if the file exists
+    if !file_path.exists() {
+        return Ok(CallToolResult {
+            content: vec![CallToolResultContent::Text { 
+                text: format!("Error: File '{}' does not exist\n\nDiagnostic Info:\n{}", 
+                              file_path.display(), diagnostic_info) 
+            }],
+            is_error: true,
+        });
+    }
+    
+    // If no project path was provided, default to the file's parent directory
+    let project_dir = if request.project_path.is_none() {
+        let parent_dir = file_path.parent().unwrap_or(&project_dir).to_path_buf();
+        diagnostic_info.push_str(&format!("Using file's parent directory as project dir: {}\n", parent_dir.display()));
+        parent_dir
+    } else {
+        project_dir.clone()
+    };
+    
+    // Listing files in the directory
+    // Collect basic directory info for diagnostics
+    // List a sample of files in the directory to confirm access
+    match fs::read_dir(&project_dir) {
+        Ok(entries) => {
+            diagnostic_info.push_str("Sample of files in directory:\n");
+            for (i, entry) in entries.take(10).enumerate() {
+                if let Ok(entry) = entry {
+                    diagnostic_info.push_str(&format!("  {}: {}\n", i+1, entry.path().display()));
+                }
+            }
+        },
+        Err(e) => {
+            diagnostic_info.push_str(&format!("Error reading directory: {}\n", e));
+        }
+    }
+    
+    // Analyze the project
+    let project_structure = treesitter::analyze_project(&project_dir);
+    
+    // Convert to JSON for display
+    match serde_json::to_string_pretty(&project_structure) {
+        Ok(structure_json) => {
+            let file_count = project_structure.files.len();
+            
+            Ok(CallToolResult {
+                content: vec![CallToolResultContent::Text { 
+                    text: format!(
+                        "Project Analysis for {}\nFound {} source files\n\n{}\n\nDiagnostic Info:\n{}", 
+                        project_dir.display(), 
+                        file_count,
+                        structure_json,
+                        diagnostic_info
+                    ) 
+                }],
+                is_error: false,
+            })
+        },
+        Err(e) => {
+            Ok(CallToolResult {
+                content: vec![CallToolResultContent::Text { 
+                    text: format!("Error serializing project structure: {}", e) 
+                }],
+                is_error: true,
+            })
+        }
+    }
+}
+
 // Helper function to apply a unified diff to a string
 fn apply_diff(original: &str, diff_str: &str) -> Result<String, String> {
     let original_lines: Vec<&str> = original.lines().collect();
@@ -372,7 +599,7 @@ fn apply_diff(original: &str, diff_str: &str) -> Result<String, String> {
         let captures = parse_hunk_header(hunk_header)
             .map_err(|e| format!("Failed to parse hunk header: {}", e))?;
         
-        let (start_line, line_count) = captures;
+        let (start_line, _line_count) = captures;
         i += 1;
         
         // Apply changes from this hunk
@@ -440,7 +667,7 @@ pub async fn read_file(request: ReadFileRequest) -> HandlerResult<CallToolResult
         Ok(file) => {
             use std::io::{Read, BufReader};
             
-            let mut reader = BufReader::new(file);
+            let reader = BufReader::new(file);
             let mut buffer = Vec::with_capacity(max_chars);
             
             // Read up to max_chars characters

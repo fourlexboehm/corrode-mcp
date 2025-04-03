@@ -37,7 +37,7 @@ async fn main() {
     // clap args parser
     let args = Args::parse();
     if !args.mcp {
-        display_info(&args);
+        display_info(&args).await;
         return;
     }
     // signal handling to exit cli

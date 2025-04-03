@@ -325,6 +325,7 @@ pub struct Root {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum ErrorCode {
     // MCP SDK error codes
     ConnectionClosed = -1,

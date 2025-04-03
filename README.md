@@ -1,24 +1,36 @@
-MCP Rust CLI server template
-=============================
+# Corrode MCP Server
+====================
+
+Corrode Code Model Context Protocol (MCP) Rust Server.
 
 Model Context Protocol (MCP) is an open protocol that enables seamless integration between LLM applications
 and external data sources and tools. Whether you’re building an AI-powered IDE, enhancing a chat interface,
 or creating custom AI workflows, MCP provides a standardized way to connect LLMs with the context they need.
 
-mcp-rs-template is a simple application template that demonstrates how to implement MCP CLI server in Rust.
+This project provides an MCP server implementation in Rust for code-related tasks.
 
-# How to use template?
+# Installation
 
-1. Clone the repository
-2. Modify project information in `Cargo.toml` and `src/mcp/mod.rs`
-3. Modify server handlers:
-    - `src/mcp/prompts.rs`: prompts handlers
-    - `src/mcp/resources.rs`: resources handlers
-    - `src/mcp/tools.rs`: tools handlers
-4. Modify `src/mcp/templates/*.json` if you prefer to use json files for prompts, resources, and tools
+## From Crates.io (Recommended)
 
-mcp-rs-template is based on [rust-rpc-router](https://github.com/jeremychone/rust-rpc-router), a JSON-RPC routing
-library for Rust.
+1. Ensure you have Rust and Cargo installed.
+2. Install the server using Cargo:
+   ```bash
+   cargo install corrode-mcp
+   ```
+   This will download the crate from crates.io, build it, and install the `corrode-mcp` binary to your Cargo bin directory (usually `~/.cargo/bin/`). Ensure this directory is in your system's PATH.
+
+## From Source
+
+1. Clone the repository:
+   ```bash
+   git clone <repository_url> # TODO: Add repository URL
+   cd corrode-mcp
+   ```
+2. Build and install using Cargo:
+   ```bash
+   cargo install --path .
+   ```
 
 # CLI options
 
@@ -29,22 +41,18 @@ library for Rust.
 
 # How to use MCP CLI server in Claude Desktop?
 
-1. Edit `claude_desktop_config.json`: Claude Desktop -> `Settings` -> `Developer` -> `Edit Config` 
-2. Add the following configuration to the `servers` section:
+1. Ensure `corrode-mcp` is installed (see Installation section) and available in your system's PATH.
+2. Edit `claude_desktop_config.json`: Claude Desktop -> `Settings` -> `Developer` -> `Edit Config`
+3. Add the following configuration under the `mcpServers` key (or merge it if `mcpServers` already exists):
 
 ```json
 {
-   "mcpServers": {
-      "current-time": {
-         "command": "mcp-rs-template",
-         "args": [
-            "--mcp"
-         ],
-         "env": {
-            "API_KEY": "xxxx"
-         }
-      }
-   }
+  "mcpServers": {
+    "corrode-mcp": {
+      "command": "corrode-mcp",
+      "args": ["--mcp"]
+    }
+  }
 }
 ```
 
