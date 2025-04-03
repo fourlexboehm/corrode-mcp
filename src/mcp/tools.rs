@@ -235,7 +235,6 @@ pub async fn execute_bash(request: ExecuteBashRequest) -> HandlerResult<CallTool
         
         // Execute the command with the current working directory
         let output = Command::new("bash")
-        .env(key, val)
             .arg("-l") // Run as a login shell to load full environment
             .current_dir(&current_dir)
             .arg("-c")

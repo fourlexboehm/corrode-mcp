@@ -1,16 +1,5 @@
 [
   {
-    "name": "current-time",
-    "description": "Display current time in the city",
-    "arguments": [
-      {
-        "name": "city",
-        "description": "City name",
-        "required": true
-      }
-    ]
-  },
-  {
     "name": "analyze-code",
     "description": "Analyze code for potential improvements",
     "arguments": [
