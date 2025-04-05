@@ -43,10 +43,7 @@ pub fn handle_cd_command(current_dir: &Path, command: &str) -> Option<PathBuf> {
 
 // Function to apply a diff to a string
 pub fn apply_diff(original: &str, diff_str: &str) -> Result<String, String> {
-    // Sanitize input and provide debug info
-    println!("apply_diff called with diff of length: {}", diff_str.len());
     if diff_str.trim().is_empty() {
-        println!("Empty diff received, returning original content");
         return Ok(original.to_string());
     }
 
@@ -63,8 +60,6 @@ pub fn apply_diff(original: &str, diff_str: &str) -> Result<String, String> {
     if lines.is_empty() {
         return Ok(result);
     }
-
-    println!("Processing diff with {} lines", lines.len());
     
     let mut i = 0;
     while i < lines.len() {
@@ -77,11 +72,9 @@ pub fn apply_diff(original: &str, diff_str: &str) -> Result<String, String> {
         }
         
         if line.starts_with("@@ ") {
-            println!("Found hunk header: {}", line);
             // Found a hunk header
             match parse_hunk_header(line) {
-                Ok((start, count)) => {
-                    println!("Parsed hunk header: start={}, count={}", start, count);
+                Ok((start, _count)) => {
                     // Find the content of the hunk
                     let mut j = i + 1;
                     let mut to_remove = Vec::new();
@@ -100,9 +93,6 @@ pub fn apply_diff(original: &str, diff_str: &str) -> Result<String, String> {
                         }
                         j += 1;
                     }
-
-                    println!("Hunk contains {} lines to remove, {} lines to add, {} context lines",
-                             to_remove.len(), to_add.len(), context_lines.len());
 
                     // Apply the changes
                     let original_lines: Vec<&str> = result.lines().collect();
@@ -178,7 +168,6 @@ pub fn apply_diff(original: &str, diff_str: &str) -> Result<String, String> {
                         new_lines.push(original_lines[idx].to_string());
                     }
 
-                    println!("Generated new content with {} lines", new_lines.len());
                     result = new_lines.join("\n");
                     
                     // Preserve trailing newline if original had one
@@ -197,15 +186,12 @@ pub fn apply_diff(original: &str, diff_str: &str) -> Result<String, String> {
         }
     }
 
-    println!("Diff applied successfully. Original length: {}, New length: {}",
-             original.len(), result.len());
     Ok(result)
 }
 
 // Helper function to parse a unified diff hunk header
 pub fn parse_hunk_header(header: &str) -> Result<(usize, usize), String> {
     // Example: @@ -1,5 +1,6 @@
-    println!("Parsing hunk header: '{}'", header);
     
     // Validate basic format
     if !header.starts_with("@@ ") || !header.contains(" @@") {
@@ -213,7 +199,6 @@ pub fn parse_hunk_header(header: &str) -> Result<(usize, usize), String> {
     }
     
     let parts: Vec<&str> = header.split_whitespace().collect();
-    println!("Header parts: {:?}", parts);
     
     // We need at least three parts: "@@", "-1,5", "+1,6", "@@"
     if parts.len() < 3 {
@@ -226,14 +211,10 @@ pub fn parse_hunk_header(header: &str) -> Result<(usize, usize), String> {
         None => return Err(format!("Missing old range (-start,count) in hunk header: '{}'", header))
     };
     
-    println!("Found old range part: '{}'", old_range_part);
-    
     let range_str = &old_range_part[1..]; // "1,5"
-    println!("Extracted range string: '{}'", range_str);
     
     // Handle both formats: single number or start,count
     let range_parts: Vec<&str> = range_str.split(',').collect();
-    println!("Range parts: {:?}", range_parts);
     
     let start = match range_parts.get(0) {
         Some(s) if !s.is_empty() => {
@@ -245,8 +226,6 @@ pub fn parse_hunk_header(header: &str) -> Result<(usize, usize), String> {
         _ => return Err(format!("Missing or invalid start line number in hunk header: '{}'", header))
     };
     
-    println!("Parsed start line: {}", start);
-    
     let count = if range_parts.len() > 1 && !range_parts[1].is_empty() {
         match range_parts[1].parse::<usize>() {
             Ok(num) => num,
@@ -257,8 +236,5 @@ pub fn parse_hunk_header(header: &str) -> Result<(usize, usize), String> {
         1
     };
     
-    println!("Parsed count: {}", count);
-    println!("Successfully parsed hunk header: start={}, count={}", start, count);
     Ok((start, count))
 }
-

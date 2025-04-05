@@ -1,11 +1,10 @@
+#![allow(dead_code)]
 use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
-use std::fs::{self, File};
-use std::path::{Path, PathBuf};
-use std::io::Write;
+use std::fs;
+use std::path::Path;
 use tree_sitter::{Language, Node, Parser, Query, QueryCursor};
-use walkdir::WalkDir;
 
 extern crate tree_sitter_rust as rust;
 extern crate tree_sitter_javascript as javascript;

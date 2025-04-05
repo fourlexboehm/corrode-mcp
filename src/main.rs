@@ -2,7 +2,6 @@ mod mcp;
 use corrode_mcp::{apply_diff, handle_cd_command, resolve_path};
 use mcp_attr::Result;
 use mcp_attr::schema::{GetPromptResult, CallToolResult};
-use crate::mcp::treesitter;
 use crate::mcp::function_signatures;
 
 use std::collections::HashMap;
@@ -292,10 +291,6 @@ impl McpServer for CorrodeMcpServer {
         let file_path_buf = resolve_path(&current_dir, &file_path);
         let display_path = file_path_buf.display().to_string();
 
-        // Enhanced debug output
-        println!("Editing file: {}", display_path);
-        println!("Diff content (length: {} bytes):\n{}", diff.len(), diff);
-        
         // Validate diff format basics
         if !diff.contains("@@ ") {
             mcp_attr::bail!("Invalid diff format: Missing hunk header (should start with '@@ ')");
@@ -311,25 +306,17 @@ impl McpServer for CorrodeMcpServer {
             Err(e) => mcp_attr::bail!("Error reading file '{}': {}", display_path, e),
         };
 
-        println!("Original content length: {} bytes", original_content.len());
-        println!("Original content lines: {}", original_content.lines().count());
-
         // Apply the diff with better error handling
         let new_content = match apply_diff(&original_content, &diff) {
             Ok(content) => content,
             Err(e) => {
-                println!("Diff application error: {}", e);
                 mcp_attr::bail!("Error applying diff: {}. Make sure your diff format is correct and the line numbers match the file content.", e);
             },
         };
 
-        println!("New content length: {} bytes", new_content.len());
-        println!("New content lines: {}", new_content.lines().count());
-
         // Write the new content
         match fs::write(&file_path_buf, &new_content) {
             Ok(_) => {
-                println!("Successfully wrote new content to file");
                 Ok(CallToolResult::from(format!("Successfully applied diff to file: {}. Original had {} lines, new content has {} lines.",
                     display_path,
                     original_content.lines().count(),
@@ -638,4 +625,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-
