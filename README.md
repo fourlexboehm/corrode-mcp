@@ -32,13 +32,6 @@ This project provides an MCP server implementation in Rust for code-related task
    cargo install --path .
    ```
 
-# CLI options
-
-* `--mcp`: Enable MCP server
-* `--resources`: display resources
-* `--prompts`: display prompts
-* `--tools`: display tools
-
 # How to use MCP CLI server in Claude Desktop?
 
 1. Ensure `corrode-mcp` is installed (see Installation section) and available in your system's PATH.
