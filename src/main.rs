@@ -44,6 +44,12 @@ struct GetCrateDependenciesArgs {
 }
 
 #[derive(Deserialize, JsonSchema)]
+struct ListFunctionSignaturesArgs {
+    /// Optional specific file to check
+    file_path: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
 struct LookupCrateDocsArgs {
     #[serde(rename = "crateName")]
     crate_name: Option<String>,
@@ -252,7 +258,7 @@ impl McpServer for CorrodeMcpServer {
 
     /// Edit a file by applying a unified diff to it.
     #[tool]
-    async fn edit_file(&self, 
+    async fn edit_file(&self,
         /// Path to the file to edit
         file_path: String,
         /// The diff content using a simplified unified diff format
@@ -261,19 +267,50 @@ impl McpServer for CorrodeMcpServer {
         let file_path_buf = resolve_path(&current_dir, &file_path);
         let display_path = file_path_buf.display().to_string();
 
-        match fs::read_to_string(&file_path_buf) {
-            Ok(original_content) => {
-                match apply_diff(&original_content, &diff) {
-                    Ok(new_content) => {
-                        match fs::write(&file_path_buf, new_content) {
-                            Ok(_) => Ok(CallToolResult::from(format!("Successfully applied diff to file: {}", display_path))), // Wrap
-                            Err(e) => mcp_attr::bail!("Error writing to file '{}': {}", display_path, e),
-                        }
-                    },
-                    Err(e) => mcp_attr::bail!("Error applying diff: {}", e), // bail! handles conversion
-                }
+        // Enhanced debug output
+        println!("Editing file: {}", display_path);
+        println!("Diff content (length: {} bytes):\n{}", diff.len(), diff);
+        
+        // Validate diff format basics
+        if !diff.contains("@@ ") {
+            mcp_attr::bail!("Invalid diff format: Missing hunk header (should start with '@@ ')");
+        }
+
+        if !file_path_buf.exists() {
+            mcp_attr::bail!("Error: File '{}' does not exist", display_path);
+        }
+
+        // Read the original content
+        let original_content = match fs::read_to_string(&file_path_buf) {
+            Ok(content) => content,
+            Err(e) => mcp_attr::bail!("Error reading file '{}': {}", display_path, e),
+        };
+
+        println!("Original content length: {} bytes", original_content.len());
+        println!("Original content lines: {}", original_content.lines().count());
+
+        // Apply the diff with better error handling
+        let new_content = match apply_diff(&original_content, &diff) {
+            Ok(content) => content,
+            Err(e) => {
+                println!("Diff application error: {}", e);
+                mcp_attr::bail!("Error applying diff: {}. Make sure your diff format is correct and the line numbers match the file content.", e);
             },
-            Err(e) => mcp_attr::bail!("Error reading file '{}': {}", display_path, e), // bail! handles conversion
+        };
+
+        println!("New content length: {} bytes", new_content.len());
+        println!("New content lines: {}", new_content.lines().count());
+
+        // Write the new content
+        match fs::write(&file_path_buf, &new_content) {
+            Ok(_) => {
+                println!("Successfully wrote new content to file");
+                Ok(CallToolResult::from(format!("Successfully applied diff to file: {}. Original had {} lines, new content has {} lines.",
+                    display_path,
+                    original_content.lines().count(),
+                    new_content.lines().count())))
+            },
+            Err(e) => mcp_attr::bail!("Error writing to file '{}': {}", display_path, e),
         }
     }
 
@@ -514,14 +551,19 @@ impl McpServer for CorrodeMcpServer {
 
                 match response.text().await {
                     Ok(html_content) => {
-                        let text_content = html2text::from_read(html_content.as_bytes(), 130);
+                        // Convert HTML to text
+                        let html_result = html2text::from_read(html_content.as_bytes(), 130);
+                        if let Err(e) = &html_result {
+                            mcp_attr::bail!("Error converting HTML to text: {}", e);
+                        }
+                        let text_content = html_result.unwrap();
 
+                        // Truncate if too long
                         const MAX_LENGTH: usize = 8000;
                         let truncated_text = if text_content.chars().count() > MAX_LENGTH {
                             format!("{}\n\n[Content truncated. Full documentation available at {}]",
                                 text_content.chars().take(MAX_LENGTH).collect::<String>(), url)
                         } else {
-
                             text_content
                         };
                         Ok(CallToolResult::from(truncated_text))
@@ -539,19 +581,42 @@ impl McpServer for CorrodeMcpServer {
 
     /// List function signatures found in the current project directory.
     #[tool]
-    async fn list_function_signatures(&self) -> Result<CallToolResult> {
+    async fn list_function_signatures(&self, args: Option<ListFunctionSignaturesArgs>) -> Result<CallToolResult> {
         let current_dir = self.0.lock().unwrap().current_working_dir.clone();
-
-        // Call the existing function to get signatures
-        // Ensure the function_signatures module is correctly referenced
-        let signatures = function_signatures::extract_project_signatures(&current_dir);
+        
+        // Output diagnostic info
+        let mut result_string = format!("Current working directory: {}\n\n", current_dir.display());
+        
+        let signatures = if let Some(args) = args {
+            if let Some(file_path) = args.file_path {
+                let file_path_buf = resolve_path(&current_dir, &file_path);
+                result_string.push_str(&format!("Checking specific file: {}\n\n", file_path_buf.display()));
+                
+                if !file_path_buf.exists() {
+                    return Ok(CallToolResult::from(format!(
+                        "Error: File '{}' does not exist.",
+                        file_path_buf.display()
+                    )));
+                }
+                
+                function_signatures::extract_function_signatures(&file_path_buf, None)
+            } else {
+                result_string.push_str("Scanning entire project directory\n\n");
+                function_signatures::extract_project_signatures(&current_dir)
+            }
+        } else {
+            result_string.push_str("Scanning entire project directory\n\n");
+            function_signatures::extract_project_signatures(&current_dir)
+        };
 
         if signatures.is_empty() {
-            return Ok(CallToolResult::from("No function signatures found in the project.".to_string()));
+            result_string.push_str("No function signatures found.");
+            return Ok(CallToolResult::from(result_string));
         }
 
-        // Format the signatures into a single string
-        let mut result_string = String::new();
+        // Format the signatures into a string
+        result_string.push_str(&format!("Found {} function signatures:\n\n", signatures.len()));
+        
         for sig in signatures {
             // Format: path/to/file.rs:line_number - signature
             let formatted_line = format!(

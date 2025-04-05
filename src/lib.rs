@@ -43,142 +43,222 @@ pub fn handle_cd_command(current_dir: &Path, command: &str) -> Option<PathBuf> {
 
 // Function to apply a diff to a string
 pub fn apply_diff(original: &str, diff_str: &str) -> Result<String, String> {
+    // Sanitize input and provide debug info
+    println!("apply_diff called with diff of length: {}", diff_str.len());
+    if diff_str.trim().is_empty() {
+        println!("Empty diff received, returning original content");
+        return Ok(original.to_string());
+    }
+
     // Parse the diff and apply the changes
     let lines: Vec<&str> = diff_str.lines().collect();
     let mut result = original.to_string();
 
+    // Better input validation
+    if !diff_str.contains("@@ ") {
+        return Err(format!("Invalid diff format: Missing hunk header (should contain '@@ '). Diff content:\n{}", diff_str));
+    }
+
+    // If there are no lines in the diff, return the original content
+    if lines.is_empty() {
+        return Ok(result);
+    }
+
+    println!("Processing diff with {} lines", lines.len());
+    
     let mut i = 0;
     while i < lines.len() {
         let line = lines[i];
+        
+        // Skip empty lines
+        if line.trim().is_empty() {
+            i += 1;
+            continue;
+        }
+        
         if line.starts_with("@@ ") {
+            println!("Found hunk header: {}", line);
             // Found a hunk header
-            if let Ok((start, _)) = parse_hunk_header(line) {
-                // Find the content of the hunk
-                let mut j = i + 1;
-                let mut to_remove = Vec::new();
-                let mut to_add = Vec::new();
+            match parse_hunk_header(line) {
+                Ok((start, count)) => {
+                    println!("Parsed hunk header: start={}, count={}", start, count);
+                    // Find the content of the hunk
+                    let mut j = i + 1;
+                    let mut to_remove = Vec::new();
+                    let mut to_add = Vec::new();
+                    let mut context_lines = Vec::new();
 
-                while j < lines.len() && !lines[j].starts_with("@@ ") {
-                    let line = lines[j];
-                    if line.starts_with('-') {
-                        to_remove.push(&line[1..]);
-                    } else if line.starts_with('+') {
-                        to_add.push(&line[1..]);
-                    }
-                    j += 1;
-                }
-
-                // Apply the changes
-                let original_lines: Vec<&str> = result.lines().collect();
-                let mut new_lines = Vec::new();
-
-                // This diff application logic seems incorrect/incomplete.
-                // It doesn't properly handle line indices and potential mismatches.
-                // For now, keeping the original logic, but it might need revision.
-                let mut original_idx = 0;
-                let mut lines_processed_in_hunk = 0; // Track lines consumed from original within the hunk
-                while original_idx < original_lines.len() {
-                    // Check if the current original line is the start of the hunk
-                    if original_idx + 1 == start && lines_processed_in_hunk == 0 {
-                        // Apply additions
-                        for add_line in &to_add {
-                            new_lines.push(add_line.to_string());
+                    while j < lines.len() && !lines[j].starts_with("@@ ") {
+                        let line = lines[j];
+                        if line.starts_with('-') {
+                            to_remove.push(&line[1..]);
+                        } else if line.starts_with('+') {
+                            to_add.push(&line[1..]);
+                        } else if !line.trim().is_empty() {
+                            // This is a context line (not starting with + or -)
+                            context_lines.push(line);
                         }
+                        j += 1;
+                    }
 
-                        // Verify and skip original lines corresponding to removals
-                        let mut removed_count = 0;
-                        while removed_count < to_remove.len() {
-                            if original_idx < original_lines.len() {
-                                // Basic check: does the line to be removed match the original?
-                                if original_lines[original_idx] == to_remove[removed_count] {
-                                    original_idx += 1; // Consume the original line
-                                    removed_count += 1;
-                                    lines_processed_in_hunk += 1;
-                                } else {
-                                    // If the lines don't match, return a helpful error
-                                    return Err(format!(
-                                        "Line mismatch at original line {}:\nExpected to remove: '{}'\nFound: '{}'",
-                                        start + removed_count, // Use start + removed_count for original line number
-                                        to_remove[removed_count],
-                                        original_lines[original_idx]
-                                    ));
-                                }
-                            } else {
-                                // Reached end of original lines unexpectedly during removal check
-                                return Err(format!(
-                                    "Unexpected end of file while trying to remove line {} ('{}')",
-                                    start + removed_count,
-                                    to_remove[removed_count]
-                                ));
+                    println!("Hunk contains {} lines to remove, {} lines to add, {} context lines",
+                             to_remove.len(), to_add.len(), context_lines.len());
+
+                    // Apply the changes
+                    let original_lines: Vec<&str> = result.lines().collect();
+                    let mut new_lines = Vec::new();
+
+                    // Validate that the start line is within bounds
+                    if start > original_lines.len() + 1 {
+                        return Err(format!(
+                            "Hunk start line {} is beyond the end of the file (which has {} lines). Check your line numbers.",
+                            start, original_lines.len()
+                        ));
+                    }
+
+                    // Copy lines before the hunk
+                    for idx in 0..(start - 1) {
+                        if idx < original_lines.len() {
+                            new_lines.push(original_lines[idx].to_string());
+                        }
+                    }
+
+                    // Add the new lines
+                    for add_line in &to_add {
+                        new_lines.push(add_line.to_string());
+                    }
+
+                    // Skip the lines that were removed
+                    let mut original_idx = start - 1;
+                    let mut removed_count = 0;
+
+                    // Verify that lines to be removed match the original
+                    while removed_count < to_remove.len() && original_idx < original_lines.len() {
+                        if original_lines[original_idx] != to_remove[removed_count] {
+                            // Enhanced error message with context
+                            let expected = to_remove[removed_count];
+                            let found = original_lines[original_idx];
+                            
+                            // Create a context visualization
+                            let mut context = format!("Expected to remove (line {}): '{}'\nFound in file: '{}'",
+                                                     original_idx + 1, expected, found);
+                            
+                            // Add surrounding lines for context if available
+                            if original_idx > 0 {
+                                context.push_str(&format!("\nPrevious line in file: '{}'",
+                                                        original_lines[original_idx - 1]));
                             }
+                            
+                            if original_idx + 1 < original_lines.len() {
+                                context.push_str(&format!("\nNext line in file: '{}'",
+                                                        original_lines[original_idx + 1]));
+                            }
+                            
+                            return Err(format!(
+                                "Line mismatch at line {}:\n{}\n\nPlease make sure your diff matches the exact content of the file.",
+                                original_idx + 1, context
+                            ));
                         }
-                        // If no lines were removed, we still need to advance original_idx past the context lines
-                        // covered by the hunk header's original count, if that count was > 0.
-                        // However, the simple unified diff format used here doesn't provide enough context
-                        // to reliably skip context lines. A more robust diff library is needed for that.
-                        // For this specific implementation, we assume the hunk only covers removed lines.
-                        // If lines_processed_in_hunk is still 0 (only additions), we don't advance original_idx here.
-
-                    } else {
-                        // Keep the original line if not part of the hunk modification
-                        new_lines.push(original_lines[original_idx].to_string());
                         original_idx += 1;
+                        removed_count += 1;
                     }
-                    // Reset lines_processed_in_hunk if we moved past the hunk's influence
-                    // This simple logic might still be insufficient for complex diffs.
-                    if lines_processed_in_hunk > 0 && original_idx + 1 > start + lines_processed_in_hunk {
-                         lines_processed_in_hunk = 0;
+
+                    if removed_count < to_remove.len() {
+                        return Err(format!(
+                            "Unexpected end of file while trying to remove line {}. There are only {} lines in the file, but the diff tries to remove '{}' at line {}.",
+                            start + removed_count,
+                            original_lines.len(),
+                            to_remove[removed_count],
+                            start + removed_count
+                        ));
                     }
+
+                    // Copy the rest of the original lines
+                    for idx in original_idx..original_lines.len() {
+                        new_lines.push(original_lines[idx].to_string());
+                    }
+
+                    println!("Generated new content with {} lines", new_lines.len());
+                    result = new_lines.join("\n");
+                    
+                    // Preserve trailing newline if original had one
+                    if original.ends_with('\n') && !result.ends_with('\n') {
+                        result.push('\n');
+                    }
+
+                    i = j; // Move past the processed hunk
                 }
-
-
-                result = new_lines.join("\n");
-                // Preserve trailing newline if original had one
-                if original.ends_with('\n') && !result.ends_with('\n') {
-                    result.push('\n');
+                Err(e) => {
+                    return Err(format!("Failed to parse hunk header '{}': {}. Ensure the format is '@@ -start,count +start,count @@'", line, e));
                 }
-
-                i = j; // Move past the processed hunk
-            } else {
-                return Err(format!("Failed to parse hunk header: {}", line));
             }
         } else {
             i += 1; // Move to the next line if not a hunk header
         }
     }
 
+    println!("Diff applied successfully. Original length: {}, New length: {}",
+             original.len(), result.len());
     Ok(result)
 }
-
 
 // Helper function to parse a unified diff hunk header
 pub fn parse_hunk_header(header: &str) -> Result<(usize, usize), String> {
     // Example: @@ -1,5 +1,6 @@
-    let parts: Vec<&str> = header.split(' ').collect();
-    if parts.len() < 3 || !parts[0].starts_with("@@") || !parts[2].starts_with("@@") {
-        return Err(format!("Invalid hunk header format: {}", header));
+    println!("Parsing hunk header: '{}'", header);
+    
+    // Validate basic format
+    if !header.starts_with("@@ ") || !header.contains(" @@") {
+        return Err(format!("Invalid hunk header format (should be '@@ -start,count +start,count @@'): '{}'", header));
     }
-    let old_range_part = parts[1]; // e.g., "-1,5"
-
-    if !old_range_part.starts_with('-') {
-         return Err(format!("Invalid old range format in hunk header: {}", old_range_part));
+    
+    let parts: Vec<&str> = header.split_whitespace().collect();
+    println!("Header parts: {:?}", parts);
+    
+    // We need at least three parts: "@@", "-1,5", "+1,6", "@@"
+    if parts.len() < 3 {
+        return Err(format!("Invalid hunk header format, insufficient parts: '{}'", header));
     }
-
-    let range_str = &old_range_part[1..]; // "1,5"
-    let range_parts: Vec<&str> = range_str.split(',').collect();
-
-    let start = range_parts.get(0)
-        .ok_or_else(|| format!("Missing start line in hunk header: {}", header))?
-        .parse::<usize>()
-        .map_err(|e| format!("Failed to parse start line '{}': {}", range_parts[0], e))?;
-
-    let count = if range_parts.len() > 1 {
-        range_parts[1].parse::<usize>()
-            .map_err(|e| format!("Failed to parse line count '{}': {}", range_parts[1], e))?
-    } else {
-        1 // Default count is 1 if not specified
+    
+    // Find the part that starts with "-" (there could be whitespace)
+    let old_range_part = match parts.iter().find(|part| part.starts_with('-')) {
+        Some(part) => *part,
+        None => return Err(format!("Missing old range (-start,count) in hunk header: '{}'", header))
     };
-
+    
+    println!("Found old range part: '{}'", old_range_part);
+    
+    let range_str = &old_range_part[1..]; // "1,5"
+    println!("Extracted range string: '{}'", range_str);
+    
+    // Handle both formats: single number or start,count
+    let range_parts: Vec<&str> = range_str.split(',').collect();
+    println!("Range parts: {:?}", range_parts);
+    
+    let start = match range_parts.get(0) {
+        Some(s) if !s.is_empty() => {
+            match s.parse::<usize>() {
+                Ok(num) => num,
+                Err(e) => return Err(format!("Failed to parse start line '{}': {}", s, e))
+            }
+        },
+        _ => return Err(format!("Missing or invalid start line number in hunk header: '{}'", header))
+    };
+    
+    println!("Parsed start line: {}", start);
+    
+    let count = if range_parts.len() > 1 && !range_parts[1].is_empty() {
+        match range_parts[1].parse::<usize>() {
+            Ok(num) => num,
+            Err(e) => return Err(format!("Failed to parse line count '{}': {}", range_parts[1], e))
+        }
+    } else {
+        // Default count is 1 if not specified or empty
+        1
+    };
+    
+    println!("Parsed count: {}", count);
+    println!("Successfully parsed hunk header: start={}, count={}", start, count);
     Ok((start, count))
 }
 
