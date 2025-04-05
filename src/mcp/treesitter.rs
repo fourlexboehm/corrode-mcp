@@ -157,7 +157,7 @@ fn get_query_for_language(language: Language) -> Option<String> {
 }
 
 // Get the line number from a node's position
-fn get_line(node: &Node, _source: &str) -> usize {
+pub fn get_line(node: &Node, _source: &str) -> usize {
     let pos = node.start_position();
     // TreeSitter positions are 0-based, add 1 for human readability
     pos.row + 1
@@ -351,27 +351,27 @@ pub fn analyze_project(project_dir: &Path) -> ProjectStructure {
 }
 
 // Safely get the language functions
-unsafe fn tree_sitter_rust() -> Language {
+pub unsafe fn tree_sitter_rust() -> Language {
     rust::language()
 }
-unsafe fn tree_sitter_javascript() -> Language {
+pub unsafe fn tree_sitter_javascript() -> Language {
     javascript::language()
 }
 // For TypeScript, use a workaround since the function might be named differently
-unsafe fn tree_sitter_typescript() -> Language {
+pub unsafe fn tree_sitter_typescript() -> Language {
     // Some crate versions use different function names for TypeScript
     // Fall back to JavaScript if TypeScript fails
     typescript::language_typescript()
 }
-unsafe fn tree_sitter_python() -> Language {
+pub unsafe fn tree_sitter_python() -> Language {
     python::language()
 }
-unsafe fn tree_sitter_go() -> Language {
+pub unsafe fn tree_sitter_go() -> Language {
     go::language()
 }
-unsafe fn tree_sitter_c() -> Language {
+pub unsafe fn tree_sitter_c() -> Language {
     c::language()
 }
-unsafe fn tree_sitter_cpp() -> Language {
+pub unsafe fn tree_sitter_cpp() -> Language {
     cpp::language()
 }

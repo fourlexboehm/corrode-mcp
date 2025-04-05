@@ -3,6 +3,8 @@ use corrode_mcp::{apply_diff, handle_cd_command, resolve_path};
 use mcp_attr::Result;
 use mcp_attr::schema::{GetPromptResult, CallToolResult};
 use crate::mcp::treesitter;
+use crate::mcp::function_signatures;
+
 use std::collections::HashMap;
 use mcp_attr::server::{mcp_server, McpServer, serve_stdio};
 use std::sync::Mutex;
@@ -73,6 +75,18 @@ impl McpServer for CorrodeMcpServer {
         // Return a simple String, letting `Into<GetPromptResult>` handle conversion
         Ok(GetPromptResult::from(prompt_text))
     }
+
+    /// Prompt the user for the directory to change to.
+    #[prompt]
+    async fn cd(
+        &self,
+        /// The target directory path
+        target_directory: String,
+    ) -> Result<GetPromptResult> {
+        let prompt_text = format!("Please enter the full path to the project directory you want to change to, starting from: {}", target_directory);
+        Ok(GetPromptResult::from(prompt_text))
+    }
+
 
     // /// Get details for a specific crate
     // #[prompt]
@@ -507,6 +521,7 @@ impl McpServer for CorrodeMcpServer {
                             format!("{}\n\n[Content truncated. Full documentation available at {}]",
                                 text_content.chars().take(MAX_LENGTH).collect::<String>(), url)
                         } else {
+
                             text_content
                         };
                         Ok(CallToolResult::from(truncated_text))
@@ -521,6 +536,36 @@ impl McpServer for CorrodeMcpServer {
             }
         }
     }
+
+    /// List function signatures found in the current project directory.
+    #[tool]
+    async fn list_function_signatures(&self) -> Result<CallToolResult> {
+        let current_dir = self.0.lock().unwrap().current_working_dir.clone();
+
+        // Call the existing function to get signatures
+        // Ensure the function_signatures module is correctly referenced
+        let signatures = function_signatures::extract_project_signatures(&current_dir);
+
+        if signatures.is_empty() {
+            return Ok(CallToolResult::from("No function signatures found in the project.".to_string()));
+        }
+
+        // Format the signatures into a single string
+        let mut result_string = String::new();
+        for sig in signatures {
+            // Format: path/to/file.rs:line_number - signature
+            let formatted_line = format!(
+                "{}:{}: {}\n",
+                sig.file_path,
+                sig.line_number,
+                sig.signature.trim() // Trim whitespace from the signature line
+            );
+            result_string.push_str(&formatted_line);
+        }
+
+        Ok(CallToolResult::from(result_string))
+    }
+
 }
 
 #[tokio::main]
@@ -536,3 +581,4 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
+
