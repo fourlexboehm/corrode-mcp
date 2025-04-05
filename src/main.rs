@@ -1,20 +1,15 @@
 mod mcp;
 use corrode_mcp::{apply_diff, handle_cd_command, resolve_path};
 use mcp_attr::Result;
-use mcp_attr::schema::{ // Import all schema types here
-    GetPromptResult, CallToolResult, Role, TextContent, PromptMessage
-};
-use serde_json::Value;
+use mcp_attr::schema::{GetPromptResult, CallToolResult};
 use crate::mcp::treesitter;
-use std::collections::HashMap; // Keep for now
+use std::collections::HashMap;
 use mcp_attr::server::{mcp_server, McpServer, serve_stdio};
-// Remove unused imports based on cargo check warnings
 use std::sync::Mutex;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::fs;
 use std::process::Command;
 use std::env;
-use dirs;
 use crate::mcp::crates_io::{CratesIoClient, RequestOptions, FetchResponse};
 use serde::Deserialize;
 use schemars::JsonSchema;
@@ -48,25 +43,20 @@ struct GetCrateDependenciesArgs {
 
 #[derive(Deserialize, JsonSchema)]
 struct LookupCrateDocsArgs {
-    #[serde(rename = "crateName")] // Keep original name for compatibility
+    #[serde(rename = "crateName")]
     crate_name: Option<String>,
 }
 
 
-// Define the server state structure (can be expanded later)
 struct ServerData {
     current_working_dir: PathBuf,
-    // Add state fields here if needed
     http_client: reqwest::Client,
 }
 
-// Define the main server struct
 struct CorrodeMcpServer(Mutex<ServerData>);
 
-// Implement the McpServer trait using the attribute macro
 #[mcp_server]
 impl McpServer for CorrodeMcpServer {
-    // Prompt, Resource, and Tool methods will be added here later
     /// Search for crates on crates.io
     #[prompt]
     async fn search_crates(
@@ -309,7 +299,7 @@ impl McpServer for CorrodeMcpServer {
 
     /// Execute a command using bash shell. Handles 'cd' to change server's working directory.
     #[tool] 
-    async fn tool_execute_bash(&self, command: String) -> Result<CallToolResult> { // Revert to CallToolResult
+    async fn execute_bash(&self, command: String) -> Result<CallToolResult> { 
         let mut result = String::new();
 
         // Split commands if they contain && or ;
@@ -326,7 +316,7 @@ impl McpServer for CorrodeMcpServer {
 
         for cmd in commands {
             let cmd = cmd.trim();
-            let current_dir_path = server_state.current_working_dir.clone(); // Clone for use in this iteration
+            let current_dir_path = server_state.current_working_dir.clone(); 
 
             // Check if command is a cd command and update working directory if it is
             if let Some(new_dir) = handle_cd_command(&current_dir_path, cmd) {
@@ -410,7 +400,11 @@ impl McpServer for CorrodeMcpServer {
 
     /// Edit a file by applying a unified diff to it.
     #[tool]
-    async fn tool_edit_file(&self, file_path: String, diff: String) -> Result<CallToolResult> {
+    async fn edit_file(&self, 
+        /// Path to the file to edit
+        file_path: String,
+        /// The diff content using a simplified unified diff format
+        diff: String) -> Result<CallToolResult> {
         let current_dir = self.0.lock().unwrap().current_working_dir.clone();
         let file_path_buf = resolve_path(&current_dir, &file_path);
         let display_path = file_path_buf.display().to_string();
@@ -431,9 +425,9 @@ impl McpServer for CorrodeMcpServer {
         }
     }
 
-    /// Write content to a file using the current working directory.
-    #[tool] // Rename
-    async fn tool_write_file(&self, file_path: String, content: String) -> Result<CallToolResult> { // Revert to CallToolResult
+    /// Write content to a file using the current working directory. use this to write new files or completely overwrite existing files.
+    #[tool]
+    async fn tool_write_file(&self, file_path: String, content: String) -> Result<CallToolResult> {
         let current_dir = self.0.lock().unwrap().current_working_dir.clone();
         let file_path_buf = resolve_path(&current_dir, &file_path);
         let display_path = file_path_buf.display().to_string();
@@ -453,8 +447,8 @@ impl McpServer for CorrodeMcpServer {
     }
 
     /// Check code for errors after editing. For Rust projects, runs 'cargo check'.
-    #[tool] // Rename
-    async fn tool_check_code(&self) -> Result<CallToolResult> { // Revert to CallToolResult
+    #[tool]
+    async fn check_code(&self) -> Result<CallToolResult> { 
         let current_dir = self.0.lock().unwrap().current_working_dir.clone();
         let cargo_toml_path = current_dir.join("Cargo.toml");
 
@@ -464,12 +458,12 @@ impl McpServer for CorrodeMcpServer {
 
         // Execute 'cargo check' by calling the execute_bash tool method
         // The execute_bash function already returns Result<CallToolResult>
-        self.tool_execute_bash("cargo check".to_string()).await // Returns Result<CallToolResult>
+        self.execute_bash("cargo check".to_string()).await // Returns Result<CallToolResult>
     }
 
     /// Parse code using TreeSitter to extract structure.
-    #[tool] // Rename
-    async fn tool_parse_code(&self, file_path: String, project_path: Option<String>) -> Result<CallToolResult> { // Revert to CallToolResult
+    #[tool]
+    async fn parse_code(&self, file_path: String, project_path: Option<String>) -> Result<CallToolResult> {
         let current_dir = self.0.lock().unwrap().current_working_dir.clone();
         let mut diagnostic_info = String::new(); // Keep diagnostics local
 
@@ -503,7 +497,7 @@ impl McpServer for CorrodeMcpServer {
         }
     }
 
-    /// Read a file's contents, up to a character limit.
+    /// Read a file's contents, up to a character limit, defaults to 1000 if not set.
     #[tool]
     async fn tool_read_file(&self, file_path: String, max_chars: Option<usize>) -> Result<CallToolResult> { // Revert to CallToolResult
         let current_dir = self.0.lock().unwrap().current_working_dir.clone();
@@ -532,7 +526,7 @@ impl McpServer for CorrodeMcpServer {
     // Error handling uses mcp_attr::bail! or returns Err(...)
 
     /// Search for packages on crates.io
-    #[tool] // Rename
+    #[tool]
     async fn tool_search_crates(&self, args: SearchCratesArgs) -> Result<String> {
         let mut query_params = HashMap::new();
         query_params.insert("q".to_string(), args.query.clone());
@@ -561,7 +555,7 @@ impl McpServer for CorrodeMcpServer {
         }
     }
 
-    /// Get detailed information about a specific crate
+    /// Get detailed information about a specific crate, use this to find more about a crate
     #[tool]
     async fn tool_get_crate(&self, args: GetCrateArgs) -> Result<String> {
         let path = format!("crates/{}", args.crate_name);
@@ -583,9 +577,9 @@ impl McpServer for CorrodeMcpServer {
         }
     }
 
-    /// Get all versions of a specific crate
+    /// Get all versions of a specific crate, use this before adding a dependency to ensure you're using the latest version
     #[tool]
-    async fn tool_get_crate_versions(&self, args: GetCrateVersionsArgs) -> Result<String> { // Reverted to CallToolResult
+    async fn tool_get_crate_versions(&self, args: GetCrateVersionsArgs) -> Result<String> { 
         let path = format!("crates/{}/versions", args.crate_name);
 
         match CratesIoClient::get(&path, None).await {
@@ -604,7 +598,7 @@ impl McpServer for CorrodeMcpServer {
 
      /// Get dependencies for a specific version of a crate
     #[tool] 
-    async fn tool_get_crate_dependencies(&self, args: GetCrateDependenciesArgs) -> Result<String> { // Revert to CallToolResult
+    async fn tool_get_crate_dependencies(&self, args: GetCrateDependenciesArgs) -> Result<String> {
         let path = format!("crates/{}/{}/dependencies", args.crate_name, args.version);
 
         match CratesIoClient::get(&path, None).await {
@@ -622,23 +616,18 @@ impl McpServer for CorrodeMcpServer {
         }
     }
 
-    /// Lookup documentation for a Rust crate from docs.rs
+    /// Lookup documentation for a Rust crate from docs.rs, use this if you're having problems with a crates APIs
     #[tool]
-    async fn tool_lookup_crate_docs(&self, args: LookupCrateDocsArgs) -> Result<CallToolResult> { // Revert to CallToolResult
+    async fn tool_lookup_crate_docs(&self, args: LookupCrateDocsArgs) -> Result<CallToolResult> {
         let crate_name = args.crate_name.unwrap_or_else(|| "tokio".to_string());
-        // Construct URL for the latest version explicitly
-        let url = format!("https://docs.rs/{}/latest/{}/", crate_name, crate_name.replace('-', "_")); // Use crate name slug for path
+        let url = format!("https://docs.rs/{}/latest/{}/", crate_name, crate_name.replace('-', "_"));
 
-
-        // Explicitly handle client build error with match
-        let client = match reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(20))
-            .build()
-        {
-            Ok(c) => c,
-            Err(e) => mcp_attr::bail!("Failed to build reqwest client: {}", e),
+        // Get client but release lock before any async operations
+        let client = {
+            let server_state = self.0.lock().unwrap();
+            server_state.http_client.clone()
         };
-
+        
         match client.get(&url).send().await {
             Ok(response) => {
                 if !response.status().is_success() {
@@ -651,13 +640,13 @@ impl McpServer for CorrodeMcpServer {
                         let text_content = html2text::from_read(html_content.as_bytes(), 130);
 
                         const MAX_LENGTH: usize = 8000;
-                        let truncated_text = if text_content.chars().count() > MAX_LENGTH { // Use chars().count()
-                            format!("{}\n\n[Content truncated. Full documentation available at {}]", text_content.chars().take(MAX_LENGTH).collect::<String>(), url)
+                        let truncated_text = if text_content.chars().count() > MAX_LENGTH {
+                            format!("{}\n\n[Content truncated. Full documentation available at {}]",
+                                text_content.chars().take(MAX_LENGTH).collect::<String>(), url)
                         } else {
                             text_content
                         };
-
-                        Ok(CallToolResult::from(truncated_text)) // Wrap
+                        Ok(CallToolResult::from(truncated_text))
                     }
                     Err(e) => {
                          mcp_attr::bail!("Error reading documentation content: {}", e)
@@ -669,7 +658,6 @@ impl McpServer for CorrodeMcpServer {
             }
         }
     }
-
 
 
 

@@ -17,18 +17,16 @@ async fn main() {
     
     println!("Searching for 'serde'...");
     match CratesIoClient::get("crates", Some(options)).await {
-        Ok(response) => {
-            match response {
-                FetchResponse::Json { data, status, .. } => {
-                    println!("Status: {}", status);
-                    println!("Data: {}", serde_json::to_string_pretty(&data).unwrap());
-                }
-                FetchResponse::Text { data, status, .. } => {
-                    println!("Status: {}", status);
-                    println!("Data: {}", data);
-                }
+        Ok(response) => match response {
+            FetchResponse::Json { data, status, .. } => {
+                println!("Status: {}", status);
+                println!("Data: {}", serde_json::to_string_pretty(&data).unwrap());
             }
-        }
+            FetchResponse::Text { data, status, .. } => {
+                println!("Status: {}", status);
+                println!("Data: {}", data);
+            }
+        },
         Err(e) => {
             println!("Error: {}", e);
         }
@@ -37,18 +35,16 @@ async fn main() {
     // Get details for a specific crate
     println!("\nGetting details for 'serde'...");
     match CratesIoClient::get("crates/serde", None).await {
-        Ok(response) => {
-            match response {
-                FetchResponse::Json { data, status, .. } => {
-                    println!("Status: {}", status);
-                    println!("Data: {}", serde_json::to_string_pretty(&data).unwrap());
-                }
-                FetchResponse::Text { data, status, .. } => {
-                    println!("Status: {}", status);
-                    println!("Data: {}", data);
-                }
+        Ok(response) => match response {
+            FetchResponse::Json { data, status, .. } => {
+                println!("Status: {}", status);
+                println!("Data: {}", serde_json::to_string_pretty(&data).unwrap());
             }
-        }
+            FetchResponse::Text { data, status, .. } => {
+                println!("Status: {}", status);
+                println!("Data: {}", data);
+            }
+        },
         Err(e) => {
             println!("Error: {}", e);
         }
