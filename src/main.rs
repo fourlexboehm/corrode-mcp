@@ -350,42 +350,6 @@ impl McpServer for CorrodeMcpServer {
         self.execute_bash("cargo check".to_string()).await // Returns Result<CallToolResult>
     }
 
-    /// Parse code using TreeSitter to extract structure.
-    #[tool]
-    async fn parse_code(&self, file_path: String, project_path: Option<String>) -> Result<CallToolResult> {
-        let current_dir = self.0.lock().unwrap().current_working_dir.clone();
-        let mut diagnostic_info = String::new(); // Keep diagnostics local
-
-        // Determine project directory logic (simplified)
-        // Use as_ref() to borrow project_path without moving it
-        let project_dir = project_path.as_ref()
-            .map(|p| resolve_path(&current_dir, p))
-            .unwrap_or_else(|| current_dir.clone());
-
-        // Resolve file path relative to project_dir if project_path was given, else relative to current_dir
-        let file_path_buf = if project_path.is_some() { // Check original Option
-             resolve_path(&project_dir, &file_path) // file_path relative to project_dir
-        } else {
-             resolve_path(&current_dir, &file_path) // file_path relative to current_dir
-        };
-
-        diagnostic_info.push_str(&format!("Resolved file path: {}\n", file_path_buf.display()));
-
-        if !file_path_buf.exists() || !file_path_buf.is_file() {
-             mcp_attr::bail!("Error: File '{}' not found or is not a file.\n\nDiagnostic Info:\n{}", file_path_buf.display(), diagnostic_info); // bail! handles conversion
-        }
-
-        match treesitter::parse_file(&file_path_buf, None) { // Assuming parse_file doesn't need project_path explicitly anymore
-            Some(file_info) => {
-                match serde_json::to_string_pretty(&file_info) {
-                    Ok(json_string) => Ok(CallToolResult::from(json_string)), // Wrap
-                    Err(e) => mcp_attr::bail!("Error serializing parse results: {}\n\nDiagnostic Info:\n{}", e, diagnostic_info), // bail! handles conversion
-                }
-            },
-            None => mcp_attr::bail!("Error parsing file: Could not parse '{}'\n\nDiagnostic Info:\n{}", file_path_buf.display(), diagnostic_info), // bail! handles conversion
-        }
-    }
-
     /// Read a file's contents, up to a character limit, defaults to 1000 if not set.
     #[tool]
     async fn read_file(&self, file_path: String, max_chars: Option<usize>) -> Result<CallToolResult> { // Revert to CallToolResult
@@ -638,7 +602,10 @@ async fn main() -> Result<()> {
 
     let server_data = ServerData {
         current_working_dir: env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-        http_client: reqwest::Client::new(),
+        http_client: reqwest::Client::builder()
+            .user_agent("corrode-mcp/0.0.2 (github.com/alexboehm/corrode-mcp)")
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new()),
     };
     let server = CorrodeMcpServer(Mutex::new(server_data));
 
