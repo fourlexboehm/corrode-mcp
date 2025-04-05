@@ -5,6 +5,9 @@ use corrode_mcp::mcp::crates_io::{CratesIoClient, RequestOptions, FetchResponse}
 async fn main() {
     println!("Testing crates.io API client...");
     
+    // Create a client instance
+    let client = CratesIoClient::new();
+    
     // Search for crates
     let mut params = HashMap::new();
     params.insert("q".to_string(), "serde".to_string());
@@ -16,7 +19,7 @@ async fn main() {
     };
     
     println!("Searching for 'serde'...");
-    match CratesIoClient::get("crates", Some(options)).await {
+    match client.get("crates", Some(options)).await {
         Ok(response) => match response {
             FetchResponse::Json { data, status, .. } => {
                 println!("Status: {}", status);
@@ -34,7 +37,7 @@ async fn main() {
     
     // Get details for a specific crate
     println!("\nGetting details for 'serde'...");
-    match CratesIoClient::get("crates/serde", None).await {
+    match client.get("crates/serde", None).await {
         Ok(response) => match response {
             FetchResponse::Json { data, status, .. } => {
                 println!("Status: {}", status);

@@ -102,62 +102,64 @@ pub async fn crates_io_fetch(
     }
 }
 
-pub struct CratesIoClient;
+#[derive(Clone)]
+pub struct CratesIoClient {
+    client: Client,
+}
 
 impl CratesIoClient {
+    pub fn new() -> Self {
+        CratesIoClient { 
+            client: get_default_client() 
+        }
+    }
+
+    pub fn with_client(client: Client) -> Self {
+        CratesIoClient { client }
+    }
+
     pub async fn get(
+        &self,
+        path: &str, 
+        options: Option<RequestOptions>
+    ) -> Result<FetchResponse, reqwest::Error> {
+        let mut opts = options.unwrap_or_default();
+        opts.method = Some("GET".to_string());
+        crates_io_fetch(&self.client, path, opts).await
+    }
+
+    pub async fn post(
+        &self,
         path: &str,
         options: Option<RequestOptions>,
     ) -> Result<FetchResponse, reqwest::Error> {
-        let client = get_default_client();
         let mut opts = options.unwrap_or_default();
-        opts.method = Some("GET".to_string());
-        crates_io_fetch(&client, path, opts).await
+        opts.method = Some("POST".to_string());
+        crates_io_fetch(&self.client, path, opts).await
     }
 
-    // pub async fn post(
-    //     path: &str,
-    //     options: Option<RequestOptions>,
-    // ) -> Result<FetchResponse, reqwest::Error> {
-    //     let client = get_default_client();
-    //     let mut opts = options.unwrap_or_default();
-    //     opts.method = Some("POST".to_string());
-    //     crates_io_fetch(&client, path, opts).await
-    // }
+    pub async fn put(
+        &self,
+        path: &str,
+        options: Option<RequestOptions>,
+    ) -> Result<FetchResponse, reqwest::Error> {
+        let mut opts = options.unwrap_or_default();
+        opts.method = Some("PUT".to_string());
+        crates_io_fetch(&self.client, path, opts).await
+    }
 
-    // pub async fn put(
-    //     path: &str,
-    //     options: Option<RequestOptions>,
-    // ) -> Result<FetchResponse, reqwest::Error> {
-    //     let client = get_default_client();
-    //     let mut opts = options.unwrap_or_default();
-    //     opts.method = Some("PUT".to_string());
-    //     crates_io_fetch(&client, path, opts).await
-    // }
-
-    // pub async fn delete(
-    //     path: &str,
-    //     options: Option<RequestOptions>,
-    // ) -> Result<FetchResponse, reqwest::Error> {
-    //     let client = get_default_client();
-    //     let mut opts = options.unwrap_or_default();
-    //     opts.method = Some("DELETE".to_string());
-    //     crates_io_fetch(&client, path, opts).await
-    // }
-
-    // pub async fn get_with_client(
-    //     client: &Client,
-    //     path: &str,
-    //     options: Option<RequestOptions>,
-    // ) -> Result<FetchResponse, reqwest::Error> {
-    //     let mut opts = options.unwrap_or_default();
-    //     opts.method = Some("GET".to_string());
-    //     crates_io_fetch(client, path, opts).await
-    // }
+    pub async fn delete(
+        &self,
+        path: &str,
+        options: Option<RequestOptions>,
+    ) -> Result<FetchResponse, reqwest::Error> {
+        let mut opts = options.unwrap_or_default();
+        opts.method = Some("DELETE".to_string());
+        crates_io_fetch(&self.client, path, opts).await
+    }
 }
 
-// CratesIoClient is the primary interface for accessing the crates.io API
-
+// Helper function to create a default HTTP client
 fn get_default_client() -> Client {
     let mut headers = header::HeaderMap::new();
     headers.insert(

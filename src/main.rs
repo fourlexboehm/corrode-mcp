@@ -139,162 +139,6 @@ impl McpServer for CorrodeMcpServer {
     //     })
     // }
 
-    // /// Lookup documentation for a Rust crate from docs.rs
-    // #[prompt]
-    // async fn lookup_crate_docs(
-    //     &self,
-    //     /// Name of the Rust crate (defaults to 'tokio')
-    //     #[arg("crateName")] // Use #[arg] to match the original argument name
-    //     crate_name: Option<String>, // Optional argument
-    // ) -> Result<GetPromptResult> {
-    //     let name = crate_name.unwrap_or_else(|| "tokio".to_string());
-    //     Ok(GetPromptResult {
-    //         description: Some("Lookup crate documentation".to_string()),
-    //         messages: Some(vec![PromptMessage {
-    //             role: Role::User,
-    //             content: TextContent {
-    //                 text: format!(
-    //                     "Please analyze and summarize the documentation for the Rust crate '{}'. Focus on:\n1. The main purpose and features of the crate\n2. Key types and functions\n3. Common usage patterns\n4. Any important notes or warnings\n5. VERY IMPORTANT: Latest Version\n\nDocumentation content will follow.",
-    //                     name
-    //                 ),
-    //                 type_: "text".to_string(),
-    //                 annotations: None,
-    //             },
-    //         }]),
-    //         meta: Default::default(), // Use Default::default()
-    //     })
-    // }
-    // /// Execute a bash command
-    // #[prompt]
-    // async fn execute_bash(
-    //     &self,
-    //     /// The bash command to execute
-    //     command: String,
-    // ) -> Result<GetPromptResult> {
-    //     Ok(GetPromptResult {
-    //         description: Some("Execute bash command".to_string()),
-    //         messages: Some(vec![PromptMessage {
-    //             role: Role::User,
-    //             content: TextContent {
-    //                 text: format!("Execute the following bash command and report the output:\n```bash\n{}\n```", command),
-    //                 type_: "text".to_string(),
-    //                 annotations: None,
-    //             },
-    //         }]),
-    //         meta: Default::default(), // Use Default::default()
-    //     })
-    // }
-
-    // /// Read the content of a file
-    // #[prompt]
-    // async fn read_file(
-    //     &self,
-    //     /// Path to the file to read
-    //     file_path: String,
-    //     /// Maximum characters to read (optional, default 1000)
-    //     max_chars: Option<String>, // Keep as String for now, parsing logic would be in the tool itself
-    // ) -> Result<GetPromptResult> {
-    //     // Note: max_chars is currently unused in the prompt text generation
-    //     Ok(GetPromptResult {
-    //         description: Some("Read file content".to_string()),
-    //         messages: Some(vec![PromptMessage {
-    //             role: Role::User,
-    //             content: TextContent {
-    //                 text: format!("Read the content of the file '{}' and provide it.", file_path),
-    //                 type_: "text".to_string(),
-    //                 annotations: None,
-    //             },
-    //         }]),
-    //         meta: Default::default(), // Use Default::default()
-    //     })
-    // }
-
-    // /// Edit a file using a diff
-    // #[prompt]
-    // async fn edit_file(
-    //     &self,
-    //     /// Path to the file to edit
-    //     file_path: String,
-    //     /// The diff content (unified format)
-    //     diff: String,
-    // ) -> Result<GetPromptResult> {
-    //     Ok(GetPromptResult {
-    //         description: Some("Edit file with diff".to_string()),
-    //         messages: Some(vec![PromptMessage {
-    //             role: Role::User,
-    //             content: TextContent {
-    //                 text: format!("Apply the following diff to the file '{}':\n```diff\n{}\n```", file_path, diff),
-    //                 type_: "text".to_string(),
-    //                 annotations: None,
-    //             },
-    //         }]),
-    //         meta: Default::default(), // Use Default::default()
-    //     })
-    // }
-
-    // /// Write content to a file
-    // #[prompt]
-    // async fn write_file(
-    //     &self,
-    //     /// Path to the file to write
-    //     file_path: String,
-    //     /// The content to write
-    //     content: String,
-    // ) -> Result<GetPromptResult> {
-    //     Ok(GetPromptResult {
-    //         description: Some("Write content to file".to_string()),
-    //         messages: Some(vec![PromptMessage {
-    //             role: Role::User,
-    //             content: TextContent {
-    //                 text: format!("Write the following content to the file '{}':\n```\n{}\n```", file_path, content),
-    //                 type_: "text".to_string(),
-    //                 annotations: None,
-    //             },
-    //         }]),
-    //         meta: Default::default(), // Use Default::default()
-    //     })
-    // }
-
-    // /// Check Rust code for errors using 'cargo check'
-    // #[prompt]
-    // async fn check(&self) -> Result<GetPromptResult> { // No arguments
-    //      Ok(GetPromptResult {
-    //         description: Some("Check Rust code".to_string()),
-    //         messages: Some(vec![PromptMessage {
-    //             role: Role::User,
-    //             content: TextContent {
-    //                 text: "Run 'cargo check' on the current Rust project and report any errors or warnings.".to_string(),
-    //                 type_: "text".to_string(),
-    //                 annotations: None,
-    //             },
-    //         }]),
-    //         meta: Default::default(), // Use Default::default()
-    //     })
-    // }
-
-    // /// Parse code structure using TreeSitter
-    // #[prompt]
-    // async fn parse_code(
-    //     &self,
-    //     /// Path to the file to parse
-    //     file_path: String,
-    //     /// Optional project root path
-    //     project_path: Option<String>,
-    // ) -> Result<GetPromptResult> {
-    //     // Note: project_path is currently unused in the prompt text generation
-    //     Ok(GetPromptResult {
-    //         description: Some("Parse code structure".to_string()),
-    //         messages: Some(vec![PromptMessage {
-    //             role: Role::User,
-    //             content: TextContent {
-    //                 text: format!("Parse the code structure (functions, classes, etc.) of the file '{}' using TreeSitter.", file_path),
-    //                 type_: "text".to_string(),
-    //                 annotations: None,
-    //             },
-    //         }]),
-    //         meta: Default::default(), // Use Default::default()
-    //     })
-    // }
     // --- Tool Implementations ---
 
     /// Execute a command using bash shell. Handles 'cd' to change server's working directory.
@@ -336,12 +180,6 @@ impl McpServer for CorrodeMcpServer {
                 if cmd == "cd" || (cmd.starts_with("cd ") && !cmd.contains("&&") && !cmd.contains(';')) {
                      continue;
                 }
-                 // If cd was part of a chain (e.g., cd foo && ls), update current_dir_path for the next part
-                 // This might be complex if the chain involves multiple cds.
-                 // For simplicity, we assume the CWD change applies to subsequent commands *in this tool call*.
-                 // The state `server_state.current_working_dir` is updated for future tool calls.
-                 // Re-cloning might be needed if the loop structure changes significantly.
-                 // current_dir_path = server_state.current_working_dir.clone(); // Re-sync if needed
             }
 
             // For non-cd commands or combined commands, execute with proper working directory
@@ -530,6 +368,13 @@ impl McpServer for CorrodeMcpServer {
     async fn tool_search_crates(&self, args: SearchCratesArgs) -> Result<String> {
         let mut query_params = HashMap::new();
         query_params.insert("q".to_string(), args.query.clone());
+        
+        // Create a crates.io client in a separate scope to ensure MutexGuard is dropped
+        let crates_client = {
+            let server_data = self.0.lock().unwrap();
+            CratesIoClient::with_client(server_data.http_client.clone())
+        }; // server_data is dropped here when the block ends
+        
         if let Some(page) = args.page {
             query_params.insert("page".to_string(), page.to_string());
         }
@@ -537,8 +382,8 @@ impl McpServer for CorrodeMcpServer {
             query_params.insert("per_page".to_string(), per_page.to_string());
         }
         let options = RequestOptions { params: Some(query_params), ..Default::default() };
-
-        match CratesIoClient::get("crates", Some(options)).await {
+        
+        match crates_client.get("crates", Some(options)).await {
             Ok(response) => match response {
                 FetchResponse::Json { data, status, .. } => {
                     let json_string = match serde_json::to_string_pretty(&data) {
@@ -558,9 +403,15 @@ impl McpServer for CorrodeMcpServer {
     /// Get detailed information about a specific crate, use this to find more about a crate
     #[tool]
     async fn tool_get_crate(&self, args: GetCrateArgs) -> Result<String> {
-        let path = format!("crates/{}", args.crate_name);
-
-        match CratesIoClient::get(&path, None).await {
+        // Scope the mutex guard to ensure it's dropped before any await points
+        let (crates_client, path) = {
+            let server_data = self.0.lock().unwrap();
+            let client = CratesIoClient::with_client(server_data.http_client.clone());
+            let path_str = format!("crates/{}", args.crate_name);
+            (client, path_str)
+        };
+        
+        match crates_client.get(&path, None).await {
             Ok(response) => match response {
                 FetchResponse::Json { data, status, .. } => {
                     let json_string = match serde_json::to_string_pretty(&data) {
@@ -579,10 +430,16 @@ impl McpServer for CorrodeMcpServer {
 
     /// Get all versions of a specific crate, use this before adding a dependency to ensure you're using the latest version
     #[tool]
-    async fn tool_get_crate_versions(&self, args: GetCrateVersionsArgs) -> Result<String> { 
-        let path = format!("crates/{}/versions", args.crate_name);
-
-        match CratesIoClient::get(&path, None).await {
+    async fn tool_get_crate_versions(&self, args: GetCrateVersionsArgs) -> Result<String> {
+        // Scope the mutex guard to ensure it's dropped before any await points
+        let (crates_client, path) = {
+            let server_data = self.0.lock().unwrap();
+            let client = CratesIoClient::with_client(server_data.http_client.clone());
+            let path_str = format!("crates/{}/versions", args.crate_name);
+            (client, path_str)
+        };
+        
+        match crates_client.get(&path, None).await {
             Ok(response) => match response {
                 FetchResponse::Json { data, status, .. } => {
                      let json_string = serde_json::to_string_pretty(&data)?;
@@ -597,11 +454,17 @@ impl McpServer for CorrodeMcpServer {
     }
 
      /// Get dependencies for a specific version of a crate
-    #[tool] 
+    #[tool]
     async fn tool_get_crate_dependencies(&self, args: GetCrateDependenciesArgs) -> Result<String> {
-        let path = format!("crates/{}/{}/dependencies", args.crate_name, args.version);
-
-        match CratesIoClient::get(&path, None).await {
+        // Scope the mutex guard to ensure it's dropped before any await points
+        let (crates_client, path) = {
+            let server_data = self.0.lock().unwrap();
+            let client = CratesIoClient::with_client(server_data.http_client.clone());
+            let path_str = format!("crates/{}/{}/dependencies", args.crate_name, args.version);
+            (client, path_str)
+        };
+        
+        match crates_client.get(&path, None).await {
             Ok(response) => match response {
                 FetchResponse::Json { data, status, .. } => {
                      let json_string = serde_json::to_string_pretty(&data)?;
@@ -658,15 +521,11 @@ impl McpServer for CorrodeMcpServer {
             }
         }
     }
-
-
-
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
 
-    // Initialize server state
     let server_data = ServerData {
         current_working_dir: env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
         http_client: reqwest::Client::new(),
