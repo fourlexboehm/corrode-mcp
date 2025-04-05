@@ -76,40 +76,58 @@ pub fn apply_diff(original: &str, diff_str: &str) -> Result<String, String> {
                 // It doesn't properly handle line indices and potential mismatches.
                 // For now, keeping the original logic, but it might need revision.
                 let mut original_idx = 0;
+                let mut lines_processed_in_hunk = 0; // Track lines consumed from original within the hunk
                 while original_idx < original_lines.len() {
-                    if original_idx + 1 == start { // Check if we are at the start line of the hunk (1-based index)
+                    // Check if the current original line is the start of the hunk
+                    if original_idx + 1 == start && lines_processed_in_hunk == 0 {
                         // Apply additions
                         for add_line in &to_add {
                             new_lines.push(add_line.to_string());
                         }
-                        // Skip original lines corresponding to removals
+
+                        // Verify and skip original lines corresponding to removals
                         let mut removed_count = 0;
                         while removed_count < to_remove.len() {
                             if original_idx < original_lines.len() {
                                 // Basic check: does the line to be removed match the original?
-                                // This is a weak check and doesn't handle context lines well.
                                 if original_lines[original_idx] == to_remove[removed_count] {
-                                     original_idx += 1;
-                                     removed_count += 1;
+                                    original_idx += 1; // Consume the original line
+                                    removed_count += 1;
+                                    lines_processed_in_hunk += 1;
                                 } else {
-                                     // If mismatch, maybe error or just skip? Sticking to skip for now.
-                                     // Or maybe the diff format implies context lines not starting with +/-?
-                                     // The original logic was complex and potentially flawed.
-                                     // Let's just skip the number of lines indicated by `to_remove.len()`
-                                     // This is likely incorrect but avoids complex error handling for now.
-                                     original_idx += to_remove.len(); // Advance past removed lines
-                                     break; // Exit inner loop after skipping
+                                    // If the lines don't match, return a helpful error
+                                    return Err(format!(
+                                        "Line mismatch at original line {}:\nExpected to remove: '{}'\nFound: '{}'",
+                                        start + removed_count, // Use start + removed_count for original line number
+                                        to_remove[removed_count],
+                                        original_lines[original_idx]
+                                    ));
                                 }
                             } else {
-                                break; // Reached end of original lines
+                                // Reached end of original lines unexpectedly during removal check
+                                return Err(format!(
+                                    "Unexpected end of file while trying to remove line {} ('{}')",
+                                    start + removed_count,
+                                    to_remove[removed_count]
+                                ));
                             }
                         }
-                        // After handling the hunk, continue to the next line
-                        continue; // Go to next iteration of outer loop
+                        // If no lines were removed, we still need to advance original_idx past the context lines
+                        // covered by the hunk header's original count, if that count was > 0.
+                        // However, the simple unified diff format used here doesn't provide enough context
+                        // to reliably skip context lines. A more robust diff library is needed for that.
+                        // For this specific implementation, we assume the hunk only covers removed lines.
+                        // If lines_processed_in_hunk is still 0 (only additions), we don't advance original_idx here.
+
                     } else {
                         // Keep the original line if not part of the hunk modification
                         new_lines.push(original_lines[original_idx].to_string());
                         original_idx += 1;
+                    }
+                    // Reset lines_processed_in_hunk if we moved past the hunk's influence
+                    // This simple logic might still be insufficient for complex diffs.
+                    if lines_processed_in_hunk > 0 && original_idx + 1 > start + lines_processed_in_hunk {
+                         lines_processed_in_hunk = 0;
                     }
                 }
 
