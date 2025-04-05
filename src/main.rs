@@ -265,7 +265,7 @@ impl McpServer for CorrodeMcpServer {
 
     /// Write content to a file using the current working directory. use this to write new files or completely overwrite existing files.
     #[tool]
-    async fn tool_write_file(&self, file_path: String, content: String) -> Result<CallToolResult> {
+    async fn write_file(&self, file_path: String, content: String) -> Result<CallToolResult> {
         let current_dir = self.0.lock().unwrap().current_working_dir.clone();
         let file_path_buf = resolve_path(&current_dir, &file_path);
         let display_path = file_path_buf.display().to_string();
@@ -337,7 +337,7 @@ impl McpServer for CorrodeMcpServer {
 
     /// Read a file's contents, up to a character limit, defaults to 1000 if not set.
     #[tool]
-    async fn tool_read_file(&self, file_path: String, max_chars: Option<usize>) -> Result<CallToolResult> { // Revert to CallToolResult
+    async fn read_file(&self, file_path: String, max_chars: Option<usize>) -> Result<CallToolResult> { // Revert to CallToolResult
         let current_dir = self.0.lock().unwrap().current_working_dir.clone();
         let file_path_buf = resolve_path(&current_dir, &file_path);
         let display_path = file_path_buf.display().to_string();
@@ -402,7 +402,7 @@ impl McpServer for CorrodeMcpServer {
 
     /// Get detailed information about a specific crate, use this to find more about a crate
     #[tool]
-    async fn tool_get_crate(&self, args: GetCrateArgs) -> Result<String> {
+    async fn get_crate(&self, args: GetCrateArgs) -> Result<String> {
         // Scope the mutex guard to ensure it's dropped before any await points
         let (crates_client, path) = {
             let server_data = self.0.lock().unwrap();
@@ -455,7 +455,7 @@ impl McpServer for CorrodeMcpServer {
 
      /// Get dependencies for a specific version of a crate
     #[tool]
-    async fn tool_get_crate_dependencies(&self, args: GetCrateDependenciesArgs) -> Result<String> {
+    async fn get_crate_dependencies(&self, args: GetCrateDependenciesArgs) -> Result<String> {
         // Scope the mutex guard to ensure it's dropped before any await points
         let (crates_client, path) = {
             let server_data = self.0.lock().unwrap();
@@ -481,7 +481,7 @@ impl McpServer for CorrodeMcpServer {
 
     /// Lookup documentation for a Rust crate from docs.rs, use this if you're having problems with a crates APIs
     #[tool]
-    async fn tool_lookup_crate_docs(&self, args: LookupCrateDocsArgs) -> Result<CallToolResult> {
+    async fn lookup_crate_docs(&self, args: LookupCrateDocsArgs) -> Result<CallToolResult> {
         let crate_name = args.crate_name.unwrap_or_else(|| "tokio".to_string());
         let url = format!("https://docs.rs/{}/latest/{}/", crate_name, crate_name.replace('-', "_"));
 
