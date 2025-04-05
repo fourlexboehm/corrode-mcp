@@ -190,10 +190,19 @@ impl McpServer for CorrodeMcpServer {
                     server_state.current_working_dir = new_dir.clone();
                     result.push_str(&format!("Changed directory to: {}\n", new_dir.display()));
                 } else {
-                    result.push_str(&format!("Directory does not exist: {}\n", new_dir.display()));
+                    // Enhanced error message for CD failures with more context
+                    let error_message = format!(
+                        "Directory change failed:\n- Command: '{}'\n- Target: {}\n- Current directory: {}\n- Error: The specified directory does not exist or is not accessible",
+                        cmd,
+                        new_dir.display(),
+                        current_dir_path.display()
+                    );
+                    
+                    result.push_str(&format!("{}\n", error_message));
+                    
                     // Stop executing further commands if cd fails
                     // Use bail! which converts to the appropriate error type for Result<CallToolResult>
-                    mcp_attr::bail!("Directory does not exist: {}", new_dir.display());
+                    mcp_attr::bail!("{}", error_message);
                 }
 
                 // If this is a pure cd command, we're done with this part of the sequence
@@ -233,17 +242,33 @@ impl McpServer for CorrodeMcpServer {
                         result.push_str(&format!("\nStandard error:\n{}\n", stderr));
                     }
 
-                    // If a command fails, stop executing
                     // If a command fails, stop executing and return the accumulated output + error
                     if cmd_is_error {
+                         // Include both stdout and stderr in the error message for better debugging
+                         let error_message = format!("Command '{}' failed with exit code {}.\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                             cmd,
+                             exit_status,
+                             stdout,
+                             stderr
+                         );
+                         
                          // Use bail! which converts to the appropriate error type for Result<CallToolResult>
-                         mcp_attr::bail!("Command failed with exit code {}. Output:\n{}", exit_status, result);
+                         mcp_attr::bail!("{}", error_message);
                     }
                 },
                 Err(e) => {
-                    result.push_str(&format!("Failed to execute command '{}': {}\n", cmd, e));
-                     // Use bail! which converts to the appropriate error type for Result<CallToolResult>
-                     mcp_attr::bail!("Failed to execute command '{}': {}", cmd, e);
+                    // Enhanced error message for command execution failure
+                    let error_details = format!(
+                        "Failed to execute command '{}':\n- Error: {}\n- Working Directory: {}\n- Note: This typically happens when the command or shell is not found, or due to permissions issues",
+                        cmd,
+                        e,
+                        current_dir_path.display()
+                    );
+                    
+                    result.push_str(&format!("{}\n", error_details));
+                    
+                    // Use bail! which converts to the appropriate error type for Result<CallToolResult>
+                    mcp_attr::bail!("{}", error_details);
                 }
             }
         }
