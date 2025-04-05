@@ -1,3 +1,4 @@
+pub mod crates_io;
 pub mod utilities;
 pub mod types;
 pub mod prompts;

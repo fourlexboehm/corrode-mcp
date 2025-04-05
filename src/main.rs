@@ -1,4 +1,4 @@
-mod mcp;
+use corrode_mcp::mcp;
 
 use crate::mcp::prompts::{prompts_get, prompts_list};
 use crate::mcp::resources::{resource_read, resources_list};
