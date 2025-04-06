@@ -1,22 +1,20 @@
 mod mcp;
-use corrode_mcp::{apply_diff, handle_cd_command, resolve_path};
 use mcp_attr::Result;
-use crate::mcp::prompts::{CODE_CHANGE_WORKFLOW, MCP_TOOLS_GUIDE};
+use mcp_attr::server::{mcp_server, serve_stdio, McpServer};
 use mcp_attr::schema::{GetPromptResult, CallToolResult};
-use crate::mcp::function_signatures;
-
-use std::collections::HashMap;
-use mcp_attr::server::{mcp_server, McpServer, serve_stdio};
 use std::sync::Mutex;
 use std::path::PathBuf;
-use std::fs;
-use std::process::Command;
 use std::env;
-use crate::mcp::crates_io::{CratesIoClient, RequestOptions, FetchResponse};
+use std::collections::HashMap;
 use serde::Deserialize;
 use schemars::JsonSchema;
 use reqwest;
-use html2text;
+use crate::mcp::crates_io::{CratesIoClient, RequestOptions, FetchResponse};
+use std::fs;
+use std::process::Command;
+use crate::mcp::function_signatures;
+use corrode_mcp::{handle_cd_command, resolve_path, apply_diff};
+use crate::mcp::prompts::{CODE_CHANGE_WORKFLOW, MCP_TOOLS_GUIDE};
 
 // --- Argument Structs for Tools (derive Deserialize and JsonSchema) ---
 
@@ -111,7 +109,7 @@ impl McpServer for CorrodeMcpServer {
     async fn mcp_tools_guide(
         &self,
         /// Optional specific tool to get guidance for
-        tool: Option<String>,
+        _tool: Option<String>,
     ) -> Result<GetPromptResult> {
         let guide = MCP_TOOLS_GUIDE;
         
@@ -283,7 +281,7 @@ impl McpServer for CorrodeMcpServer {
                          );
                          
                          // Use bail! which converts to the appropriate error type for Result<CallToolResult>
-                         mcp_attr::bail!("{}", error_message);
+                         result.push_str(&format!("{}", error_message));
                     }
                 },
                 Err(e) => {
@@ -424,7 +422,7 @@ impl McpServer for CorrodeMcpServer {
 
     /// Search for packages on crates.io
     #[tool]
-    async fn search_crates(&self, args: SearchCratesArgs) -> Result<String> {
+    async fn tool_search_crates(&self, args: SearchCratesArgs) -> Result<String> {
         let mut query_params = HashMap::new();
         query_params.insert("q".to_string(), args.query.clone());
         

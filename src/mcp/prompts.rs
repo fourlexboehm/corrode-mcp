@@ -13,7 +13,7 @@ pub const CODE_CHANGE_WORKFLOW: &str = r#"
 
 ## Dependency Addition Sub-Loop
 When adding a new dependency, insert this between steps 1 and 2:
-   a. RESEARCH: Use `search_crates` to find the package
+   a. RESEARCH: Use `tool_search_crates` to find the package
    b. VERSION: Use `get_crate_versions` to identify the latest stable version
    c. Then continue with the main loop
 
@@ -39,7 +39,7 @@ When making changes to Rust code, follow the workflow below.
 
 ## Dependency Addition Sub-Loop
 When adding a new dependency, insert this between steps 1 and 2:
-   a. RESEARCH: Use `search_crates` to find the package
+   a. RESEARCH: Use `tool_search_crates` to find the package
    b. VERSION: Use `get_crate_versions` to identify the latest stable version
    c. Then continue with the main loop
 
@@ -65,8 +65,8 @@ When adding a new dependency, insert this between steps 1 and 2:
    - Usage: `execute_bash({ "command": "ls -la" })`
    - Use to run cargo commands, navigate directories, etc.
 
-6. `search_crates`: Search for packages on crates.io
-   - Usage: `search_crates({ "query": "tokio", "page": 1, "per_page": 10 })`
+6. `tool_search_crates`: Search for packages on crates.io
+   - Usage: `tool_search_crates({ "query": "tokio", "page": 1, "per_page": 10 })`
    - Use to find potential dependencies
 
 7. `get_crate`: Get detailed information about a specific crate
