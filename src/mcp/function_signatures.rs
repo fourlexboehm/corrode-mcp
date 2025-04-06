@@ -15,13 +15,13 @@ pub struct FunctionSignature {
 pub fn extract_project_signatures(project_dir: &Path) -> Vec<FunctionSignature> {
     let mut all_signatures = Vec::new();
     
-    println!("Starting extraction from directory: {}", project_dir.display());
-    println!("Searching for test_functions.rs");
+    // println!("Starting extraction from directory: {}", project_dir.display());
+    // println!("Searching for test_functions.rs");
     
     // First, let's try the specific test file we created
     let test_file = project_dir.join("test_functions.rs");
     if test_file.exists() {
-        println!("Found test_functions.rs, scanning...");
+        // println!("Found test_functions.rs, scanning...");
         
         // Create some dummy signatures just to verify it works
         let signature = FunctionSignature {
@@ -64,10 +64,10 @@ pub fn extract_project_signatures(project_dir: &Path) -> Vec<FunctionSignature> 
         };
         all_signatures.push(signature);
     } else {
-        println!("test_functions.rs not found");
+        // println!("test_functions.rs not found");
     }
     
-    println!("Found {} function signatures", all_signatures.len());
+    // println!("Found {} function signatures", all_signatures.len());
     all_signatures
 }
 

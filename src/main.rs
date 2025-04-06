@@ -1,6 +1,7 @@
 mod mcp;
 use corrode_mcp::{apply_diff, handle_cd_command, resolve_path};
 use mcp_attr::Result;
+use crate::mcp::prompts::{CODE_CHANGE_WORKFLOW, MCP_TOOLS_GUIDE};
 use mcp_attr::schema::{GetPromptResult, CallToolResult};
 use crate::mcp::function_signatures;
 
@@ -90,6 +91,36 @@ impl McpServer for CorrodeMcpServer {
     ) -> Result<GetPromptResult> {
         let prompt_text = format!("Please enter the full path to the project directory you want to change to, starting from: {}", target_directory);
         Ok(GetPromptResult::from(prompt_text))
+    }
+
+    /// Get the code change workflow guidance
+    #[prompt]
+    async fn code_change_workflow(
+        &self,
+        /// Optional aspect of the workflow to focus on
+        _aspect: Option<String>,
+    ) -> Result<GetPromptResult> {
+        let workflow = CODE_CHANGE_WORKFLOW;
+        
+        // Return the workflow as a prompt
+        Ok(GetPromptResult::from(workflow))
+    }
+
+    /// Get comprehensive MCP tools usage guide
+    #[prompt]
+    async fn mcp_tools_guide(
+        &self,
+        /// Optional specific tool to get guidance for
+        tool: Option<String>,
+    ) -> Result<GetPromptResult> {
+        let guide = MCP_TOOLS_GUIDE;
+        
+        // If a specific tool was requested, try to find that section
+        // For now, we'll just return the full guide
+        // In a future enhancement, this could extract just the relevant section
+        
+        // Return the guide as a prompt
+        Ok(GetPromptResult::from(guide))
     }
 
 
@@ -389,10 +420,11 @@ impl McpServer for CorrodeMcpServer {
     // --- Crates.io Tool Implementations ---
     // Note: These tools now return Result<Value> or Result<String> directly.
     // Error handling uses mcp_attr::bail! or returns Err(...)
+    // #[resource("crates.io://{query}/{page}/{per_page}")]
 
     /// Search for packages on crates.io
     #[tool]
-    async fn tool_search_crates(&self, args: SearchCratesArgs) -> Result<String> {
+    async fn search_crates(&self, args: SearchCratesArgs) -> Result<String> {
         let mut query_params = HashMap::new();
         query_params.insert("q".to_string(), args.query.clone());
         
@@ -457,7 +489,7 @@ impl McpServer for CorrodeMcpServer {
 
     /// Get all versions of a specific crate, use this before adding a dependency to ensure you're using the latest version
     #[tool]
-    async fn tool_get_crate_versions(&self, args: GetCrateVersionsArgs) -> Result<String> {
+    async fn get_crate_versions(&self, args: GetCrateVersionsArgs) -> Result<String> {
         // Scope the mutex guard to ensure it's dropped before any await points
         let (crates_client, path) = {
             let server_data = self.0.lock().unwrap();
