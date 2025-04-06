@@ -1,9 +1,9 @@
 [package]
 name = "corrode-mcp"
-version = "0.0.2"
+version = "0.1.0"
 edition = "2024"
 authors = ["Alex Boehm"]
-description = "Corrode Code Model Context Protocol (MCP) Rust Server"
+description = "Corrode Code MCP Server for Rust"
 keywords = ["rust", "ai", "mcp", "cli"]
 categories = ["command-line-utilities"]
 readme = "README.md"
