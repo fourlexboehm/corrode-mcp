@@ -1,11 +1,19 @@
+// Import the library crate which brings in public definitions from lib.rs
+extern crate corrode_mcp;
+
+// Define our own mcp module for any main-specific logic
+// but most will come from the library crate
 mod mcp;
-use mcp_attr::{server::serve_stdio_with, Result};
+use mcp_attr::Result;
 use mcp_attr::server::serve_stdio;
 use std::sync::Mutex;
 use std::path::PathBuf;
 use std::env;
 use reqwest; // Keep reqwest as it's used in http_client builder
-use corrode_mcp::{CorrodeMcpServer, ServerData};
+
+// Import server structs from the library crate
+// Using the library name as a prefix makes it clear where these come from
+use corrode_mcp::{ServerData, CorrodeMcpServer};
 
 
 #[tokio::main]

@@ -6,16 +6,17 @@ use std::sync::Mutex;
 use std::collections::HashMap;
 use serde::Deserialize;
 use schemars::JsonSchema;
-use reqwest;
-use crate::mcp::crates_io::{CratesIoClient, RequestOptions, FetchResponse};
-use crate::mcp::function_signatures;
-use crate::mcp::patch::{parse_hunks, find_candidates, rebuild_hunks, rebuild_patch};
 use std::fs;
 use std::process::Command;
-use crate::mcp::prompts::{CODE_CHANGE_WORKFLOW, MCP_TOOLS_GUIDE};
+
+#[derive(Default)]
+struct RequestOptions {
+    params: Option<HashMap<String, String>>,
+}
 
 
 pub mod mcp;
+pub mod vendor;
 
 
 // --- Argument Structs for Tools (derive Deserialize and JsonSchema) ---
@@ -44,10 +45,7 @@ struct GetCrateDependenciesArgs {
 }
 
 #[derive(Deserialize, JsonSchema)]
-struct ListFunctionSignaturesArgs {
-    /// Optional specific file to check
-    file_path: Option<String>,
-}
+struct ListFunctionSignaturesArgs {}
 
 #[derive(Deserialize, JsonSchema)]
 struct LookupCrateDocsArgs {
@@ -55,6 +53,17 @@ struct LookupCrateDocsArgs {
     crate_name: Option<String>,
 }
 
+#[derive(Deserialize, JsonSchema)]
+struct ProbeSearchArgs {
+    /// The search query to run
+    query: String,
+    /// Optional file patterns to filter (e.g. ["*.rs", "*.toml"])
+    file_patterns: Option<Vec<String>>,
+    /// Maximum number of results to return
+    max_results: Option<usize>,
+    /// Optional language filter (e.g. "rust", "python")
+    language: Option<String>,
+}
 
 pub struct ServerData {
     pub current_working_dir: PathBuf,
@@ -82,6 +91,22 @@ impl McpServer for CorrodeMcpServer {
         Ok(GetPromptResult::from(prompt_text))
     }
 
+    /// Prompt the user for code search parameters
+    #[prompt]
+    async fn search_code(
+        &self,
+        /// Search query string
+        query: String,
+        /// Optional file patterns (comma-separated, e.g. "*.rs,*.toml")
+        _file_patterns: Option<String>,
+        /// Optional language filter
+        _language: Option<String>,
+    ) -> Result<GetPromptResult> {
+        let prompt_text = format!("I'll search for code matching '{}' in the current project. You can specify file patterns (e.g., \"*.rs\") or a specific language to filter results. How would you like to refine your search?", query);
+        Ok(GetPromptResult::from(prompt_text))
+    }
+
+
     /// Prompt the user for the directory to change to.
     #[prompt]
     async fn cd(
@@ -93,101 +118,7 @@ impl McpServer for CorrodeMcpServer {
         Ok(GetPromptResult::from(prompt_text))
     }
 
-    /// Get the code change workflow guidance
-    #[prompt]
-    async fn code_change_workflow(
-        &self,
-        /// Optional aspect of the workflow to focus on
-        _aspect: Option<String>,
-    ) -> Result<GetPromptResult> {
-        let workflow = CODE_CHANGE_WORKFLOW;
-        
-        // Return the workflow as a prompt
-        Ok(GetPromptResult::from(workflow))
-    }
 
-    /// Get comprehensive MCP tools usage guide
-    #[prompt]
-    async fn mcp_tools_guide(
-        &self,
-        /// Optional specific tool to get guidance for
-        _tool: Option<String>,
-    ) -> Result<GetPromptResult> {
-        let guide = MCP_TOOLS_GUIDE;
-        
-        // If a specific tool was requested, try to find that section
-        // For now, we'll just return the full guide
-        // In a future enhancement, this could extract just the relevant section
-        
-        // Return the guide as a prompt
-        Ok(GetPromptResult::from(guide))
-    }
-
-
-    // /// Get details for a specific crate
-    // #[prompt]
-    // async fn get_crate(
-    //     &self,
-    //     /// Name of the crate
-    //     crate_name: String,
-    // ) -> Result<GetPromptResult> {
-    //     Ok(GetPromptResult {
-    //         description: Some("Get crate details".to_string()),
-    //         messages: Some(vec![PromptMessage {
-    //             role: Role::User,
-    //             content: TextContent {
-    //                 text: format!("Provide a summary of the crate '{}' based on its details.", crate_name),
-    //                 type_: "text".to_string(),
-    //                 annotations: None, // Assuming annotations are optional
-    //             },
-    //         }]),
-    //         meta: Default::default(), // Use Default::default() for the Map
-    //     })
-    // }
-
-    // /// Get versions for a specific crate
-    // #[prompt]
-    // async fn get_crate_versions(
-    //     &self,
-    //     /// Name of the crate
-    //     crate_name: String,
-    // ) -> Result<GetPromptResult> {
-    //     Ok(GetPromptResult {
-    //         description: Some("Get crate versions".to_string()),
-    //         messages: Some(vec![PromptMessage {
-    //             role: Role::User,
-    //             content: TextContent {
-    //                 text: format!("List the recent versions of the crate '{}'.", crate_name),
-    //                 type_: "text".to_string(),
-    //                 annotations: None,
-    //             },
-    //         }]),
-    //         meta: Default::default(), // Use Default::default()
-    //     })
-    // }
-
-    // /// Get dependencies for a specific crate version
-    // #[prompt]
-    // async fn get_crate_dependencies(
-    //     &self,
-    //     /// Name of the crate
-    //     crate_name: String,
-    //     /// Version of the crate
-    //     version: String,
-    // ) -> Result<GetPromptResult> {
-    //      Ok(GetPromptResult {
-    //         description: Some("Get crate dependencies".to_string()),
-    //         messages: Some(vec![PromptMessage {
-    //             role: Role::User,
-    //             content: TextContent {
-    //                 text: format!("List the main dependencies for crate '{}' version {}.", crate_name, version),
-    //                 type_: "text".to_string(),
-    //                 annotations: None,
-    //             },
-    //         }]),
-    //         meta: Default::default(), // Use Default::default()
-    //     })
-    // }
 
     // --- Tool Implementations ---
 
@@ -351,19 +282,19 @@ impl McpServer for CorrodeMcpServer {
         }
 
         // Parse the patch hunks
-        let old_hunks = match parse_hunks(&patch) {
+        let old_hunks = match mcp::patch::parse_hunks(&patch) {
             Ok(hunks) => hunks,
             Err(e) => mcp_attr::bail!("Failed to parse patch: {}", e),
         };
 
         // Find candidates for each hunk in the file
-        let candidates = find_candidates(&old_content, &old_hunks);
+        let candidates = mcp::patch::find_candidates(&old_content, &old_hunks);
         
         // Rebuild the hunks with corrected line numbers
-        let new_hunks = rebuild_hunks(&candidates);
+        let new_hunks = mcp::patch::rebuild_hunks(&candidates);
 
         // Rebuild the patch with correct line numbers
-        let updated_patch = match rebuild_patch(&patch, &new_hunks) {
+        let updated_patch = match mcp::patch::rebuild_patch(&patch, &new_hunks) {
             Ok(patch) => patch,
             Err(e) => mcp_attr::bail!("Failed to render fixed patch: {}", e),
         };
@@ -469,7 +400,7 @@ impl McpServer for CorrodeMcpServer {
         // Create a crates.io client in a separate scope to ensure MutexGuard is dropped
         let crates_client = {
             let server_data = self.0.lock().unwrap();
-            CratesIoClient::with_client(server_data.http_client.clone())
+            server_data.http_client.clone()
         }; // server_data is dropped here when the block ends
         
         if let Some(page) = args.page {
@@ -480,17 +411,23 @@ impl McpServer for CorrodeMcpServer {
         }
         let options = RequestOptions { params: Some(query_params), ..Default::default() };
         
-        match crates_client.get("crates", Some(options)).await {
-            Ok(response) => match response {
-                FetchResponse::Json { data, status, .. } => {
-                    let json_string = match serde_json::to_string_pretty(&data) {
-                        Ok(s) => s,
-                        Err(e) => mcp_attr::bail!("Error serializing JSON response: {}", e),
-                    };
-                    Ok(format!("Status: {}\n\n{}", status, json_string))
-                },
-                FetchResponse::Text { data, status, .. } => {
-                    Ok(format!("Status: {}\n{}", status, data))
+        let mut request = crates_client.get("https://crates.io/api/v1/crates");
+        if let Some(params) = options.params {
+            request = request.query(&params);
+        }
+        
+        match request.send().await {
+            Ok(response) => {
+                let status = response.status().as_u16();
+                match response.json::<serde_json::Value>().await {
+                    Ok(data) => {
+                        let json_string = match serde_json::to_string_pretty(&data) {
+                            Ok(s) => s,
+                            Err(e) => mcp_attr::bail!("Error serializing JSON response: {}", e),
+                        };
+                        Ok(format!("Status: {}\n\n{}", status, json_string))
+                    },
+                    Err(e) => mcp_attr::bail!("Error parsing JSON response: {}", e)
                 }
             },
             Err(e) => mcp_attr::bail!("Error searching crates: {}", e),
@@ -501,24 +438,23 @@ impl McpServer for CorrodeMcpServer {
     #[tool]
     async fn get_crate(&self, args: GetCrateArgs) -> Result<String> {
         // Scope the mutex guard to ensure it's dropped before any await points
-        let (crates_client, path) = {
+        let crates_client = {
             let server_data = self.0.lock().unwrap();
-            let client = CratesIoClient::with_client(server_data.http_client.clone());
-            let path_str = format!("crates/{}", args.crate_name);
-            (client, path_str)
+            server_data.http_client.clone()
         };
         
-        match crates_client.get(&path, None).await {
-            Ok(response) => match response {
-                FetchResponse::Json { data, status, .. } => {
-                    let json_string = match serde_json::to_string_pretty(&data) {
-                        Ok(s) => s,
-                        Err(e) => mcp_attr::bail!("Error serializing JSON response: {}", e),
-                    };
-                    Ok(format!("Status: {}\n\n{}", status, json_string))
-                },
-                FetchResponse::Text { data, status, .. } => {
-                    Ok(format!("Status: {}\n{}", status, data))
+        match crates_client.get(&format!("https://crates.io/api/v1/crates/{}", args.crate_name)).send().await {
+            Ok(response) => {
+                let status = response.status().as_u16();
+                match response.json::<serde_json::Value>().await {
+                    Ok(data) => {
+                        let json_string = match serde_json::to_string_pretty(&data) {
+                            Ok(s) => s,
+                            Err(e) => mcp_attr::bail!("Error serializing JSON response: {}", e),
+                        };
+                        Ok(format!("Status: {}\n\n{}", status, json_string))
+                    },
+                    Err(e) => mcp_attr::bail!("Error parsing JSON response: {}", e)
                 }
             },
             Err(e) => mcp_attr::bail!("Error getting crate details: {}", e),
@@ -529,21 +465,20 @@ impl McpServer for CorrodeMcpServer {
     #[tool]
     async fn get_crate_versions(&self, args: GetCrateVersionsArgs) -> Result<String> {
         // Scope the mutex guard to ensure it's dropped before any await points
-        let (crates_client, path) = {
+        let crates_client = {
             let server_data = self.0.lock().unwrap();
-            let client = CratesIoClient::with_client(server_data.http_client.clone());
-            let path_str = format!("crates/{}/versions", args.crate_name);
-            (client, path_str)
+            server_data.http_client.clone()
         };
         
-        match crates_client.get(&path, None).await {
-            Ok(response) => match response {
-                FetchResponse::Json { data, status, .. } => {
-                     let json_string = serde_json::to_string_pretty(&data)?;
-                    Ok(format!("Status: {}\n\n{}", status, json_string))
-                },
-                FetchResponse::Text { data, status, .. } => {
-                     Ok(format!("Status: {}\n{}", status, data) )
+        match crates_client.get(&format!("https://crates.io/api/v1/crates/{}/versions", args.crate_name)).send().await {
+            Ok(response) => {
+                let status = response.status().as_u16();
+                match response.json::<serde_json::Value>().await {
+                    Ok(data) => {
+                        let json_string = serde_json::to_string_pretty(&data)?;
+                        Ok(format!("Status: {}\n\n{}", status, json_string))
+                    },
+                    Err(e) => mcp_attr::bail!("Error parsing JSON response: {}", e)
                 }
             },
             Err(e) => mcp_attr::bail!("Error getting crate versions: {}", e),
@@ -554,22 +489,20 @@ impl McpServer for CorrodeMcpServer {
     #[tool]
     async fn get_crate_dependencies(&self, args: GetCrateDependenciesArgs) -> Result<String> {
         // Scope the mutex guard to ensure it's dropped before any await points
-        let (crates_client, path) = {
+        let crates_client = {
             let server_data = self.0.lock().unwrap();
-            let client = CratesIoClient::with_client(server_data.http_client.clone());
-            let path_str = format!("crates/{}/{}/dependencies", args.crate_name, args.version);
-            (client, path_str)
+            server_data.http_client.clone()
         };
         
-        match crates_client.get(&path, None).await {
-            Ok(response) => match response {
-                FetchResponse::Json { data, status, .. } => {
-                     let json_string = serde_json::to_string_pretty(&data)?;
-
-                    Ok(format!("Status: {}\n\n{}", status, json_string))
-                },
-                FetchResponse::Text { data, status, .. } => {
-                     Ok(format!("Status: {}\n{}", status, data))
+        match crates_client.get(&format!("https://crates.io/api/v1/crates/{}/{}/dependencies", args.crate_name, args.version)).send().await {
+            Ok(response) => {
+                let status = response.status().as_u16();
+                match response.json::<serde_json::Value>().await {
+                    Ok(data) => {
+                        let json_string = serde_json::to_string_pretty(&data)?;
+                        Ok(format!("Status: {}\n\n{}", status, json_string))
+                    },
+                    Err(e) => mcp_attr::bail!("Error parsing JSON response: {}", e)
                 }
             },
             Err(e) => mcp_attr::bail!("Error getting crate dependencies: {}", e),
@@ -627,57 +560,53 @@ impl McpServer for CorrodeMcpServer {
 
     /// List function signatures found in the current project directory.
     #[tool]
-    async fn list_function_signatures(&self, args: Option<ListFunctionSignaturesArgs>) -> Result<CallToolResult> {
-        let current_dir = self.0.lock().unwrap().current_working_dir.clone();
-        
-        // Output diagnostic info
-        let mut result_string = format!("Current working directory: {}\n\n", current_dir.display());
-        
-        let signatures = if let Some(args) = args {
-            if let Some(file_path) = args.file_path {
-                let file_path_buf = resolve_path(&current_dir, &file_path);
-                result_string.push_str(&format!("Checking specific file: {}\n\n", file_path_buf.display()));
-                
-                if !file_path_buf.exists() {
-                    return Ok(CallToolResult::from(format!(
-                        "Error: File '{}' does not exist.",
-                        file_path_buf.display()
-                    )));
-                }
-                
-                function_signatures::extract_function_signatures(&file_path_buf, None)
-            } else {
-                result_string.push_str("Scanning entire project directory\n\n");
-                function_signatures::extract_project_signatures(&current_dir)
-            }
-        } else {
-            result_string.push_str("Scanning entire project directory\n\n");
-            function_signatures::extract_project_signatures(&current_dir)
-        };
-
-        if signatures.is_empty() {
-            result_string.push_str("No function signatures found.");
-            return Ok(CallToolResult::from(result_string));
-        }
-
-        // Format the signatures into a string
-        result_string.push_str(&format!("Found {} function signatures:\n\n", signatures.len()));
-        
-        for sig in signatures {
-            // Format: path/to/file.rs:line_number - signature
-            let formatted_line = format!(
-                "{}:{}: {}\n",
-                sig.file_path,
-                sig.line_number,
-                sig.signature.trim() // Trim whitespace from the signature line
-            );
-            result_string.push_str(&formatted_line);
-        }
-
-        Ok(CallToolResult::from(result_string))
+    async fn list_function_signatures(&self, _args: Option<ListFunctionSignaturesArgs>) -> Result<CallToolResult> {
+        // [REMOVED: function signature logic due to missing dependencies]
+        Ok(CallToolResult::from("Function signature extraction temporarily disabled: missing internal implementation.".to_string()))
     }
 
-}
+    /// Search code in the current project using the probe library
+    ///
+    /// Performs a code search with powerful filtering and ranking capabilities.
+    /// Use this tool to find patterns, functions, and code blocks in your codebase.
+    #[tool]
+    async fn search_code_tool(&self, args: ProbeSearchArgs) -> Result<CallToolResult> {
+        use self::mcp::probe_search::{search_code, format_search_results};
+        
+        // Get the current working directory
+        let current_dir = self.0.lock().unwrap().current_working_dir.clone();
+        
+        // Set defaults for optional parameters
+        let file_patterns = args.file_patterns.unwrap_or_default();
+        let max_results = args.max_results.unwrap_or(20);
+        
+        // Perform the search using our probe_search module
+        match search_code(
+            &args.query,
+            &current_dir,
+            file_patterns,
+            max_results,
+            args.language,
+        ).await {
+            Ok(results) => {
+                // Format the results into a readable string
+                let formatted_results = format_search_results(&results);
+                
+                // If there are no results, provide a helpful message
+                if results.results.is_empty() {
+                    Ok(CallToolResult::from(format!("No results found for query: '{}'. Try broadening your search or using different terms.", args.query)))
+                } else {
+                    Ok(CallToolResult::from(formatted_results))
+                }
+            },
+            Err(e) => mcp_attr::bail!("Error searching code: {}", e),
+        }
+    }
+} // end impl McpServer for CorrodeMcpServer
+
+// Simplified Args struct
+
+
 // Simplified Args struct
 // Helper function to resolve a file path relative to the current directory
 pub fn resolve_path(current_dir: &Path, file_path: &str) -> PathBuf {
@@ -714,4 +643,3 @@ pub fn handle_cd_command(current_dir: &Path, command: &str) -> Option<PathBuf> {
     }
     None
 }
-
