@@ -124,8 +124,12 @@ impl McpServer for CorrodeMcpServer {
 
     /// Execute a command using bash shell. Handles 'cd' to change server's working directory.
     #[tool] 
-    async fn execute_bash(&self, command: String) -> Result<CallToolResult> { 
+    async fn execute_bash(&self, command: String) -> Result<CallToolResult> {
+        // Debug flag - can be made configurable in the future
+        let debug_enabled = false;
+         
         let mut result = String::new();
+        // Flag to track if any command has failed
 
         // Split commands if they contain && or ;
         let commands: Vec<&str> = if command.contains("&&") {
@@ -143,27 +147,29 @@ impl McpServer for CorrodeMcpServer {
             let cmd = cmd.trim();
             let current_dir_path = server_state.current_working_dir.clone(); 
 
+            // Create execution context for debugging and error reporting
+            let execution_context = mcp::bash_exec::CommandExecutionContext::new(
+                cmd, 
+                &current_dir_path
+            );
+
             // Check if command is a cd command and update working directory if it is
             if let Some(new_dir) = handle_cd_command(&current_dir_path, cmd) {
+                // Log path resolution details if debug is enabled
                 // Try to actually change to this directory to verify it exists
                 if new_dir.exists() && new_dir.is_dir() {
                     // Update the server state's CWD
                     server_state.current_working_dir = new_dir.clone();
                     result.push_str(&format!("Changed directory to: {}\n", new_dir.display()));
                 } else {
-                    // Enhanced error message for CD failures with more context
+                    // Simple error message for now - avoid complex error handling that might cause MCP errors
                     let error_message = format!(
-                        "Directory change failed:\n- Command: '{}'\n- Target: {}\n- Current directory: {}\n- Error: The specified directory does not exist or is not accessible",
-                        cmd,
-                        new_dir.display(),
-                        current_dir_path.display()
-                    );
+                        "Directory not found: The directory '{}' does not exist or is not accessible.\nWorking directory: {}\nSuggestion: Verify the path exists before accessing it.",
+                        new_dir.display(), current_dir_path.display());
+                    result.push_str(&format!("\n{}\n", error_message));
                     
-                    result.push_str(&format!("{}\n", error_message));
-                    
-                    // Stop executing further commands if cd fails
-                    // Use bail! which converts to the appropriate error type for Result<CallToolResult>
-                    mcp_attr::bail!("{}", error_message);
+                    // Return early but don't use bail! - include the error in the result
+                    return Ok(CallToolResult::from(result));
                 }
 
                 // If this is a pure cd command, we're done with this part of the sequence
@@ -172,11 +178,28 @@ impl McpServer for CorrodeMcpServer {
                 }
             }
 
+            // Add debug information if enabled
+            if debug_enabled {
+                result.push_str(&format!("\n[DEBUG] Executing command: '{}'\n", cmd));
+                result.push_str(&format!("[DEBUG] Working directory: {}\n", current_dir_path.display()));
+                
+                if execution_context.is_compound_command {
+                    result.push_str("[DEBUG] This is a compound command that will be executed as a single unit by bash\n");
+                }
+                
+                result.push_str(&format!("[DEBUG] Command executable: '{}'\n", execution_context.executable()));
+                
+                if !execution_context.command_parts.is_empty() {
+                    result.push_str(&format!("[DEBUG] Command arguments: {}\n", 
+                        execution_context.command_parts[1..].join(" ")));
+                }
+            }
+
             // For non-cd commands or combined commands, execute with proper working directory
             // Use the potentially updated current_dir_path for this specific command execution
             let output = Command::new("bash")
-                .arg("-l") // Run as a login shell to load full environment
-                .current_dir(&current_dir_path) // Use the CWD relevant to this command
+                .arg("-l")  // Run as a login shell to load full environment
+                .current_dir(&current_dir_path)  // Use the CWD relevant to this command
                 .arg("-c")
                 .arg(cmd) // Execute the potentially non-cd part
                 .output();
@@ -191,45 +214,38 @@ impl McpServer for CorrodeMcpServer {
 
                     let exit_status = output.status.code().unwrap_or(-1);
                     let cmd_is_error = !output.status.success();
-                    // Store error status but continue accumulating output unless it's a fatal error
-
-                    result.push_str(&format!("Exit code: {}\n", exit_status));
-
+                    
+                    // Format exit code based on success/failure
+                    if cmd_is_error {
+                        result.push_str(&format!("Exit code: {} (ERROR)\n", exit_status));
+                    } else { 
+                        result.push_str(&format!("Exit code: {}\n", exit_status));
+                    }
                     if !stdout.is_empty() {
                         result.push_str(&format!("\nStandard output:\n{}", stdout));
-                    }
+                     }
 
                     if !stderr.is_empty() {
                         result.push_str(&format!("\nStandard error:\n{}\n", stderr));
                     }
 
-                    // If a command fails, stop executing and return the accumulated output + error
-                    if cmd_is_error {
-                         // Include both stdout and stderr in the error message for better debugging
-                         let error_message = format!("Command '{}' failed with exit code {}.\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
-                             cmd,
-                             exit_status,
-                             stdout,
-                             stderr
-                         );
-                         
-                         // Use bail! which converts to the appropriate error type for Result<CallToolResult>
-                         result.push_str(&format!("{}", error_message));
+                    // If a command fails, add enhanced error info but don't break execution
+                    if !output.status.success() {
+                        // Add a simplified error message with context
+                        let error_message = format!(
+                            "Command execution failed: '{}' (exit code: {})\nWorking directory: {}\nSuggestion: Check command arguments and verify inputs are valid.",
+                            cmd, exit_status, current_dir_path.display());
+                            
+                        result.push_str(&format!("\n{}\n", error_message));
                     }
-                },
-                Err(e) => {
-                    // Enhanced error message for command execution failure
-                    let error_details = format!(
-                        "Failed to execute command '{}':\n- Error: {}\n- Working Directory: {}\n- Note: This typically happens when the command or shell is not found, or due to permissions issues",
-                        cmd,
-                        e,
-                        current_dir_path.display()
-                    );
+                }, Err(e) => {
+                    let error_message = format!(
+                        "Failed to execute command '{}': {}\nWorking directory: {}\nSuggestion: Check if the command exists and you have permissions to run it.",
+                        cmd, e, current_dir_path.display());
                     
-                    result.push_str(&format!("{}\n", error_details));
-                    
-                    // Use bail! which converts to the appropriate error type for Result<CallToolResult>
-                    mcp_attr::bail!("{}", error_details);
+                    result.push_str(&format!("{}\n", error_message));
+                    // Break from the loop to stop executing further commands after an error
+                    break;
                 }
             }
         }
@@ -237,7 +253,6 @@ impl McpServer for CorrodeMcpServer {
         // Drop the lock explicitly before returning Ok
         drop(server_state);
 
-        // If all commands succeeded
         // Wrap the final string result in CallToolResult
         Ok(CallToolResult::from(result))
     }
@@ -273,7 +288,10 @@ impl McpServer for CorrodeMcpServer {
         // Read the original content
         let mut old_content = match fs::read_to_string(&file_path_buf) {
             Ok(content) => content,
-            Err(e) => mcp_attr::bail!("Failed to read file {}: {}", display_path, e),
+            Err(e) => {
+                let error_message = format!("Failed to read file {}: {}", display_path, e);
+                return Ok(CallToolResult::from(error_message));
+            }
         };
 
         // Patches are very strict on the last line being a newline
@@ -284,7 +302,10 @@ impl McpServer for CorrodeMcpServer {
         // Parse the patch hunks
         let old_hunks = match mcp::patch::parse_hunks(&patch) {
             Ok(hunks) => hunks,
-            Err(e) => mcp_attr::bail!("Failed to parse patch: {}", e),
+            Err(e) => {
+                let error_message = format!("Failed to parse patch: {}", e);
+                return Ok(CallToolResult::from(error_message));
+            }
         };
 
         // Find candidates for each hunk in the file
@@ -296,19 +317,28 @@ impl McpServer for CorrodeMcpServer {
         // Rebuild the patch with correct line numbers
         let updated_patch = match mcp::patch::rebuild_patch(&patch, &new_hunks) {
             Ok(patch) => patch,
-            Err(e) => mcp_attr::bail!("Failed to render fixed patch: {}", e),
+            Err(e) => {
+                let error_message = format!("Failed to render fixed patch: {}", e);
+                return Ok(CallToolResult::from(error_message));
+            }
         };
 
         // Parse the patch using diffy
         let diffy_patch = match diffy::Patch::from_str(&updated_patch) {
             Ok(patch) => patch,
-            Err(e) => mcp_attr::bail!("Failed to parse patch: {}", e),
+            Err(e) => {
+                let error_message = format!("Failed to parse patch: {}", e);
+                return Ok(CallToolResult::from(error_message));
+            }
         };
 
         // Apply the patch
         let patched = match diffy::apply(&old_content, &diffy_patch) {
             Ok(patched) => patched,
-            Err(e) => mcp_attr::bail!("Failed to apply patch: {}", e),
+            Err(e) => {
+                let error_message = format!("Failed to apply patch: {}", e);
+                return Ok(CallToolResult::from(error_message));
+            }
         };
 
         // Write the patched content to the file
@@ -329,7 +359,10 @@ impl McpServer for CorrodeMcpServer {
     
                 Ok(CallToolResult::from(format!("Patch applied successfully to {}", display_path)))
             },
-            Err(e) => mcp_attr::bail!("Error writing to file '{}': {}", display_path, e),
+            Err(e) => {
+                let error_message = format!("Error writing to file '{}': {}", display_path, e);
+                return Ok(CallToolResult::from(error_message));
+            }
         }
     }
 
@@ -342,15 +375,16 @@ impl McpServer for CorrodeMcpServer {
 
         if let Some(parent) = file_path_buf.parent() {
             if !parent.exists() {
-                if let Err(e) = fs::create_dir_all(parent) {
-                    mcp_attr::bail!("Error creating directory structure for '{}': {}", display_path, e); // bail! handles conversion
-                }
+            if let Err(e) = fs::create_dir_all(parent) {
+                let error_message = format!("Error creating directory structure for '{}': {}", display_path, e);
+                return Ok(CallToolResult::from(error_message));
+            }
             }
         }
 
         match fs::write(&file_path_buf, &content) {
-            Ok(_) => Ok(CallToolResult::from(format!("Successfully wrote to file: {}", display_path))), // Wrap
-            Err(e) => mcp_attr::bail!("Error writing to file '{}': {}", display_path, e), // bail! handles conversion
+            Ok(_) => Ok(CallToolResult::from(format!("Successfully wrote to file: {}", display_path))),
+            Err(e) => Ok(CallToolResult::from(format!("Error writing to file '{}': {}", display_path, e))),
         }
     }
 
@@ -362,7 +396,8 @@ impl McpServer for CorrodeMcpServer {
         let cargo_toml_path = current_dir.join("Cargo.toml");
 
         if !cargo_toml_path.exists() {
-             mcp_attr::bail!("No Cargo.toml found in '{}'. This doesn't appear to be a Rust project.", current_dir.display()); // bail! handles conversion
+            let error_message = format!("No Cargo.toml found in '{}'. This doesn't appear to be a Rust project.", current_dir.display());
+            return Ok(CallToolResult::from(error_message));
         }
 
         self.execute_bash("cargo check".to_string()).await // Returns Result<CallToolResult>
@@ -379,11 +414,8 @@ impl McpServer for CorrodeMcpServer {
         let display_path = file_path_buf.display().to_string();
 
         match fs::read_to_string(&file_path_buf) {
-            Ok(content) => {
-                // Return the full content without any truncation
-                Ok(CallToolResult::from(content)) // Wrap
-            },
-            Err(e) => mcp_attr::bail!("Error reading file '{}': {}", display_path, e), // bail! handles conversion
+            Ok(content) => Ok(CallToolResult::from(content)),
+            Err(e) => Ok(CallToolResult::from(format!("Error reading file '{}': {}", display_path, e))),
         }
     }
     // --- Crates.io Tool Implementations ---
@@ -419,18 +451,17 @@ impl McpServer for CorrodeMcpServer {
         match request.send().await {
             Ok(response) => {
                 let status = response.status().as_u16();
-                match response.json::<serde_json::Value>().await {
-                    Ok(data) => {
-                        let json_string = match serde_json::to_string_pretty(&data) {
-                            Ok(s) => s,
-                            Err(e) => mcp_attr::bail!("Error serializing JSON response: {}", e),
-                        };
-                        Ok(format!("Status: {}\n\n{}", status, json_string))
-                    },
-                    Err(e) => mcp_attr::bail!("Error parsing JSON response: {}", e)
-                }
+                let data = match response.json::<serde_json::Value>().await {
+                    Ok(data) => data,
+                    Err(e) => return Ok(format!("Error parsing JSON response: {}", e)),
+                };
+                let json_string = match serde_json::to_string_pretty(&data) {
+                    Ok(s) => s,
+                    Err(e) => return Ok(format!("Error serializing JSON response: {}", e)),
+                };
+                Ok(format!("Status: {}\n\n{}", status, json_string))
             },
-            Err(e) => mcp_attr::bail!("Error searching crates: {}", e),
+            Err(e) => Ok(format!("Error searching crates: {}", e)),
         }
     }
 
@@ -446,18 +477,17 @@ impl McpServer for CorrodeMcpServer {
         match crates_client.get(&format!("https://crates.io/api/v1/crates/{}", args.crate_name)).send().await {
             Ok(response) => {
                 let status = response.status().as_u16();
-                match response.json::<serde_json::Value>().await {
-                    Ok(data) => {
-                        let json_string = match serde_json::to_string_pretty(&data) {
-                            Ok(s) => s,
-                            Err(e) => mcp_attr::bail!("Error serializing JSON response: {}", e),
-                        };
-                        Ok(format!("Status: {}\n\n{}", status, json_string))
-                    },
-                    Err(e) => mcp_attr::bail!("Error parsing JSON response: {}", e)
-                }
+                let data = match response.json::<serde_json::Value>().await {
+                    Ok(data) => data,
+                    Err(e) => return Ok(format!("Error parsing JSON response: {}", e)),
+                };
+                let json_string = match serde_json::to_string_pretty(&data) {
+                    Ok(s) => s,
+                    Err(e) => return Ok(format!("Error serializing JSON response: {}", e)),
+                };
+                Ok(format!("Status: {}\n\n{}", status, json_string))
             },
-            Err(e) => mcp_attr::bail!("Error getting crate details: {}", e),
+            Err(e) => Ok(format!("Error getting crate details: {}", e)),
         }
     }
 
@@ -473,15 +503,17 @@ impl McpServer for CorrodeMcpServer {
         match crates_client.get(&format!("https://crates.io/api/v1/crates/{}/versions", args.crate_name)).send().await {
             Ok(response) => {
                 let status = response.status().as_u16();
-                match response.json::<serde_json::Value>().await {
-                    Ok(data) => {
-                        let json_string = serde_json::to_string_pretty(&data)?;
-                        Ok(format!("Status: {}\n\n{}", status, json_string))
-                    },
-                    Err(e) => mcp_attr::bail!("Error parsing JSON response: {}", e)
-                }
+                let data = match response.json::<serde_json::Value>().await {
+                    Ok(data) => data,
+                    Err(e) => return Ok(format!("Error parsing JSON response: {}", e)),
+                };
+                let json_string = match serde_json::to_string_pretty(&data) {
+                    Ok(s) => s,
+                    Err(e) => return Ok(format!("Error serializing JSON response: {}", e)),
+                };
+                Ok(format!("Status: {}\n\n{}", status, json_string))
             },
-            Err(e) => mcp_attr::bail!("Error getting crate versions: {}", e),
+            Err(e) => Ok(format!("Error getting crate versions: {}", e)),
         }
     }
 
@@ -497,15 +529,17 @@ impl McpServer for CorrodeMcpServer {
         match crates_client.get(&format!("https://crates.io/api/v1/crates/{}/{}/dependencies", args.crate_name, args.version)).send().await {
             Ok(response) => {
                 let status = response.status().as_u16();
-                match response.json::<serde_json::Value>().await {
-                    Ok(data) => {
-                        let json_string = serde_json::to_string_pretty(&data)?;
-                        Ok(format!("Status: {}\n\n{}", status, json_string))
-                    },
-                    Err(e) => mcp_attr::bail!("Error parsing JSON response: {}", e)
-                }
+                let data = match response.json::<serde_json::Value>().await {
+                    Ok(data) => data,
+                    Err(e) => return Ok(format!("Error parsing JSON response: {}", e)),
+                };
+                let json_string = match serde_json::to_string_pretty(&data) {
+                    Ok(s) => s,
+                    Err(e) => return Ok(format!("Error serializing JSON response: {}", e)),
+                };
+                Ok(format!("Status: {}\n\n{}", status, json_string))
             },
-            Err(e) => mcp_attr::bail!("Error getting crate dependencies: {}", e),
+            Err(e) => Ok(format!("Error getting crate dependencies: {}", e)),
         }
     }
 
@@ -525,7 +559,7 @@ impl McpServer for CorrodeMcpServer {
             Ok(response) => {
                 if !response.status().is_success() {
                     let error_text = format!("Error: Could not fetch documentation from {}. HTTP status: {}", url, response.status());
-                     mcp_attr::bail_public!(mcp_attr::ErrorCode::INTERNAL_ERROR, "{}", error_text);
+                    return Ok(CallToolResult::from(error_text));
                 }
 
                 match response.text().await {
@@ -533,7 +567,7 @@ impl McpServer for CorrodeMcpServer {
                         // Convert HTML to text
                         let html_result = html2text::from_read(html_content.as_bytes(), 130);
                         if let Err(e) = &html_result {
-                            mcp_attr::bail!("Error converting HTML to text: {}", e);
+                            return Ok(CallToolResult::from(format!("Error converting HTML to text: {}", e)));
                         }
                         let text_content = html_result.unwrap();
 
@@ -548,12 +582,12 @@ impl McpServer for CorrodeMcpServer {
                         Ok(CallToolResult::from(truncated_text))
                     }
                     Err(e) => {
-                         mcp_attr::bail!("Error reading documentation content: {}", e)
+                        return Ok(CallToolResult::from(format!("Error reading documentation content: {}", e)));
                     }
                 }
             }
             Err(e) => {
-                 mcp_attr::bail!("Error fetching documentation from {}: {}", url, e)
+                 return Ok(CallToolResult::from(format!("Error fetching documentation from {}: {}", url, e)));
             }
         }
     }
@@ -599,7 +633,7 @@ impl McpServer for CorrodeMcpServer {
                     Ok(CallToolResult::from(formatted_results))
                 }
             },
-            Err(e) => mcp_attr::bail!("Error searching code: {}", e),
+            Err(e) => Ok(CallToolResult::from(format!("Error searching code: {}", e))),
         }
     }
 } // end impl McpServer for CorrodeMcpServer
