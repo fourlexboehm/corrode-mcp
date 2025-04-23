@@ -7,4 +7,4 @@ pub mod search;
 
 // Re-export commonly used types for convenience
 pub use models::{LimitedSearchResults, SearchResult};
-pub use search::{perform_probe, SearchOptions};
+pub use search::{SearchOptions, perform_probe};

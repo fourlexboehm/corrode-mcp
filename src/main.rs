@@ -2,23 +2,20 @@
 extern crate corrode_mcp;
 
 // Define our own mcp module for any main-specific logic
-// but most will come from the library crate
+// but most functionality will come from the library crate
 mod mcp;
-use mcp_attr::Result;
 use mcp_attr::server::serve_stdio;
-use std::sync::Mutex;
-use std::path::PathBuf;
 use std::env;
-use reqwest; // Keep reqwest as it's used in http_client builder
+use std::path::PathBuf;
+use std::sync::Mutex;
 
 // Import server structs from the library crate
 // Using the library name as a prefix makes it clear where these come from
-use corrode_mcp::{ServerData, CorrodeMcpServer};
-
+use corrode_mcp::{CorrodeMcpServer, ServerData};
 
 #[tokio::main]
-async fn main() -> Result<()> {
-
+// Using Box<dyn std::error::Error> to address the large error type warning
+async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let server_data = ServerData {
         current_working_dir: env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
         http_client: reqwest::Client::builder()

@@ -1,23 +1,21 @@
-use std::path::{Path, PathBuf};
 use mcp_attr::Result;
-use mcp_attr::server::{mcp_server, McpServer};
-use mcp_attr::schema::{GetPromptResult, CallToolResult};
-use std::sync::Mutex;
-use std::collections::HashMap;
-use serde::Deserialize;
+use mcp_attr::schema::{CallToolResult, GetPromptResult};
+use mcp_attr::server::{McpServer, mcp_server};
 use schemars::JsonSchema;
+use serde::Deserialize;
+use std::collections::HashMap;
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Mutex;
 
 #[derive(Default)]
 struct RequestOptions {
     params: Option<HashMap<String, String>>,
 }
 
-
 pub mod mcp;
 pub mod vendor;
-
 
 // --- Argument Structs for Tools (derive Deserialize and JsonSchema) ---
 
@@ -84,9 +82,13 @@ impl McpServer for CorrodeMcpServer {
         _page: Option<String>, // Prefix unused variable
         /// Results per page (optional)
         _per_page: Option<String>, // Prefix unused variable
-    ) -> Result<GetPromptResult> { // Updated return type
+    ) -> Result<GetPromptResult> {
+        // Updated return type
         // Note: page and per_page are currently unused in the prompt text generation
-        let prompt_text = format!("Search crates.io for '{}'. Summarize the top results.", query);
+        let prompt_text = format!(
+            "Search crates.io for '{}'. Summarize the top results.",
+            query
+        );
         // Return a simple String, letting `Into<GetPromptResult>` handle conversion
         Ok(GetPromptResult::from(prompt_text))
     }
@@ -102,10 +104,12 @@ impl McpServer for CorrodeMcpServer {
         /// Optional language filter
         _language: Option<String>,
     ) -> Result<GetPromptResult> {
-        let prompt_text = format!("I'll search for code matching '{}' in the current project. You can specify file patterns (e.g., \"*.rs\") or a specific language to filter results. How would you like to refine your search?", query);
+        let prompt_text = format!(
+            "I'll search for code matching '{}' in the current project. You can specify file patterns (e.g., \"*.rs\") or a specific language to filter results. How would you like to refine your search?",
+            query
+        );
         Ok(GetPromptResult::from(prompt_text))
     }
-
 
     /// Prompt the user for the directory to change to.
     #[prompt]
@@ -114,20 +118,21 @@ impl McpServer for CorrodeMcpServer {
         /// The target directory path
         target_directory: String,
     ) -> Result<GetPromptResult> {
-        let prompt_text = format!("Please enter the full path to the project directory you want to change to, starting from: {}", target_directory);
+        let prompt_text = format!(
+            "Please enter the full path to the project directory you want to change to, starting from: {}",
+            target_directory
+        );
         Ok(GetPromptResult::from(prompt_text))
     }
-
-
 
     // --- Tool Implementations ---
 
     /// Execute a command using bash shell. Handles 'cd' to change server's working directory.
-    #[tool] 
+    #[tool]
     async fn execute_bash(&self, command: String) -> Result<CallToolResult> {
         // Debug flag - can be made configurable in the future
         let debug_enabled = false;
-         
+
         let mut result = String::new();
         // Flag to track if any command has failed
 
@@ -145,13 +150,11 @@ impl McpServer for CorrodeMcpServer {
 
         for cmd in commands {
             let cmd = cmd.trim();
-            let current_dir_path = server_state.current_working_dir.clone(); 
+            let current_dir_path = server_state.current_working_dir.clone();
 
             // Create execution context for debugging and error reporting
-            let execution_context = mcp::bash_exec::CommandExecutionContext::new(
-                cmd, 
-                &current_dir_path
-            );
+            let execution_context =
+                mcp::bash_exec::CommandExecutionContext::new(cmd, &current_dir_path);
 
             // Check if command is a cd command and update working directory if it is
             if let Some(new_dir) = handle_cd_command(&current_dir_path, cmd) {
@@ -165,41 +168,53 @@ impl McpServer for CorrodeMcpServer {
                     // Simple error message for now - avoid complex error handling that might cause MCP errors
                     let error_message = format!(
                         "Directory not found: The directory '{}' does not exist or is not accessible.\nWorking directory: {}\nSuggestion: Verify the path exists before accessing it.",
-                        new_dir.display(), current_dir_path.display());
+                        new_dir.display(),
+                        current_dir_path.display()
+                    );
                     result.push_str(&format!("\n{}\n", error_message));
-                    
+
                     // Return early but don't use bail! - include the error in the result
                     return Ok(CallToolResult::from(result));
                 }
 
                 // If this is a pure cd command, we're done with this part of the sequence
-                if cmd == "cd" || (cmd.starts_with("cd ") && !cmd.contains("&&") && !cmd.contains(';')) {
-                     continue;
+                if cmd == "cd"
+                    || (cmd.starts_with("cd ") && !cmd.contains("&&") && !cmd.contains(';'))
+                {
+                    continue;
                 }
             }
 
             // Add debug information if enabled
             if debug_enabled {
                 result.push_str(&format!("\n[DEBUG] Executing command: '{}'\n", cmd));
-                result.push_str(&format!("[DEBUG] Working directory: {}\n", current_dir_path.display()));
-                
+                result.push_str(&format!(
+                    "[DEBUG] Working directory: {}\n",
+                    current_dir_path.display()
+                ));
+
                 if execution_context.is_compound_command {
                     result.push_str("[DEBUG] This is a compound command that will be executed as a single unit by bash\n");
                 }
-                
-                result.push_str(&format!("[DEBUG] Command executable: '{}'\n", execution_context.executable()));
-                
+
+                result.push_str(&format!(
+                    "[DEBUG] Command executable: '{}'\n",
+                    execution_context.executable()
+                ));
+
                 if !execution_context.command_parts.is_empty() {
-                    result.push_str(&format!("[DEBUG] Command arguments: {}\n", 
-                        execution_context.command_parts[1..].join(" ")));
+                    result.push_str(&format!(
+                        "[DEBUG] Command arguments: {}\n",
+                        execution_context.command_parts[1..].join(" ")
+                    ));
                 }
             }
 
             // For non-cd commands or combined commands, execute with proper working directory
             // Use the potentially updated current_dir_path for this specific command execution
             let output = Command::new("bash")
-                .arg("-l")  // Run as a login shell to load full environment
-                .current_dir(&current_dir_path)  // Use the CWD relevant to this command
+                .arg("-l") // Run as a login shell to load full environment
+                .current_dir(&current_dir_path) // Use the CWD relevant to this command
                 .arg("-c")
                 .arg(cmd) // Execute the potentially non-cd part
                 .output();
@@ -214,16 +229,16 @@ impl McpServer for CorrodeMcpServer {
 
                     let exit_status = output.status.code().unwrap_or(-1);
                     let cmd_is_error = !output.status.success();
-                    
+
                     // Format exit code based on success/failure
                     if cmd_is_error {
                         result.push_str(&format!("Exit code: {} (ERROR)\n", exit_status));
-                    } else { 
+                    } else {
                         result.push_str(&format!("Exit code: {}\n", exit_status));
                     }
                     if !stdout.is_empty() {
                         result.push_str(&format!("\nStandard output:\n{}", stdout));
-                     }
+                    }
 
                     if !stderr.is_empty() {
                         result.push_str(&format!("\nStandard error:\n{}\n", stderr));
@@ -234,15 +249,22 @@ impl McpServer for CorrodeMcpServer {
                         // Add a simplified error message with context
                         let error_message = format!(
                             "Command execution failed: '{}' (exit code: {})\nWorking directory: {}\nSuggestion: Check command arguments and verify inputs are valid.",
-                            cmd, exit_status, current_dir_path.display());
-                            
+                            cmd,
+                            exit_status,
+                            current_dir_path.display()
+                        );
+
                         result.push_str(&format!("\n{}\n", error_message));
                     }
-                }, Err(e) => {
+                }
+                Err(e) => {
                     let error_message = format!(
                         "Failed to execute command '{}': {}\nWorking directory: {}\nSuggestion: Check if the command exists and you have permissions to run it.",
-                        cmd, e, current_dir_path.display());
-                    
+                        cmd,
+                        e,
+                        current_dir_path.display()
+                    );
+
                     result.push_str(&format!("{}\n", error_message));
                     // Break from the loop to stop executing further commands after an error
                     break;
@@ -268,18 +290,20 @@ impl McpServer for CorrodeMcpServer {
     /// +++ b/src/evaluations/patch.rs
     /// @@ -43,6 +43,6 @@ fn prompt() -> String {
     ///             self._content_consumed = True
-    /// 
+    ///
     /// -        Apply only these fixes, do not make any other changes to the code. The file is long and the modifications are small.
     /// +        Apply only these fixes, do not make any other changes to the code. The file is long and the modifications are small. Start by reading the file.
     ///     \"}.to_string()
     /// }
-    /// 
+    ///
     /// ```
-    async fn patch_file(&self,
+    async fn patch_file(
+        &self,
         /// Full path of the file
         file_name: String,
         /// Unified format git patch to apply
-        patch: String) -> Result<CallToolResult> {
+        patch: String,
+    ) -> Result<CallToolResult> {
         // Get the current working directory
         let current_dir = self.0.lock().unwrap().current_working_dir.clone();
         let file_path_buf = resolve_path(&current_dir, &file_name);
@@ -310,7 +334,7 @@ impl McpServer for CorrodeMcpServer {
 
         // Find candidates for each hunk in the file
         let candidates = mcp::patch::find_candidates(&old_content, &old_hunks);
-        
+
         // Rebuild the hunks with corrected line numbers
         let new_hunks = mcp::patch::rebuild_hunks(&candidates);
 
@@ -349,16 +373,23 @@ impl McpServer for CorrodeMcpServer {
                         .iter()
                         .filter(|h| !new_hunks.iter().any(|h2| h2.body == h.body))
                         .collect::<Vec<_>>();
-    
+
                     return Ok(CallToolResult::from(format!(
                         "Failed to apply all hunks. {} hunks failed to apply.\n\nThe following hunks failed to apply as their context lines could not be matched to the file, no changes were applied:\n\n---\n{}\n---\n\nMake sure all lines are correct. Are you also sure that the changes have not been applied already?",
                         failed.len(),
-                        failed.iter().map(|h| h.body.as_str()).collect::<Vec<_>>().join("\n")
+                        failed
+                            .iter()
+                            .map(|h| h.body.as_str())
+                            .collect::<Vec<_>>()
+                            .join("\n")
                     )));
                 }
-    
-                Ok(CallToolResult::from(format!("Patch applied successfully to {}", display_path)))
-            },
+
+                Ok(CallToolResult::from(format!(
+                    "Patch applied successfully to {}",
+                    display_path
+                )))
+            }
             Err(e) => {
                 let error_message = format!("Error writing to file '{}': {}", display_path, e);
                 return Ok(CallToolResult::from(error_message));
@@ -375,28 +406,40 @@ impl McpServer for CorrodeMcpServer {
 
         if let Some(parent) = file_path_buf.parent() {
             if !parent.exists() {
-            if let Err(e) = fs::create_dir_all(parent) {
-                let error_message = format!("Error creating directory structure for '{}': {}", display_path, e);
-                return Ok(CallToolResult::from(error_message));
-            }
+                if let Err(e) = fs::create_dir_all(parent) {
+                    let error_message = format!(
+                        "Error creating directory structure for '{}': {}",
+                        display_path, e
+                    );
+                    return Ok(CallToolResult::from(error_message));
+                }
             }
         }
 
         match fs::write(&file_path_buf, &content) {
-            Ok(_) => Ok(CallToolResult::from(format!("Successfully wrote to file: {}", display_path))),
-            Err(e) => Ok(CallToolResult::from(format!("Error writing to file '{}': {}", display_path, e))),
+            Ok(_) => Ok(CallToolResult::from(format!(
+                "Successfully wrote to file: {}",
+                display_path
+            ))),
+            Err(e) => Ok(CallToolResult::from(format!(
+                "Error writing to file '{}': {}",
+                display_path, e
+            ))),
         }
     }
 
     /// Check code for errors after editing. For Rust projects, runs 'cargo check'.
     /// Use this after making edits to verify your changes compile correctly.
     #[tool]
-    async fn check_code(&self) -> Result<CallToolResult> { 
+    async fn check_code(&self) -> Result<CallToolResult> {
         let current_dir = self.0.lock().unwrap().current_working_dir.clone();
         let cargo_toml_path = current_dir.join("Cargo.toml");
 
         if !cargo_toml_path.exists() {
-            let error_message = format!("No Cargo.toml found in '{}'. This doesn't appear to be a Rust project.", current_dir.display());
+            let error_message = format!(
+                "No Cargo.toml found in '{}'. This doesn't appear to be a Rust project.",
+                current_dir.display()
+            );
             return Ok(CallToolResult::from(error_message));
         }
 
@@ -415,9 +458,36 @@ impl McpServer for CorrodeMcpServer {
 
         match fs::read_to_string(&file_path_buf) {
             Ok(content) => Ok(CallToolResult::from(content)),
-            Err(e) => Ok(CallToolResult::from(format!("Error reading file '{}': {}", display_path, e))),
+            Err(e) => Ok(CallToolResult::from(format!(
+                "Error reading file '{}': {}",
+                display_path, e
+            ))),
         }
     }
+
+    /// Read file or directory contents, run this when first opening a new directory/project to get context
+    ///
+    /// Uses yek library to read and limit content to the specified token count.
+    /// Enforces a strict 50k token limit.
+    #[tool]
+    async fn read_all(&self) -> Result<CallToolResult> {
+        // Get the current working directory
+        let current_dir = self.0.lock().unwrap().current_working_dir.clone();
+
+        // Use the current directory directly for reading
+        match mcp::read_all::read_with_yek(&current_dir).await {
+            Ok(content) => Ok(CallToolResult::from(content)),
+            Err(e) => {
+                let error_message = format!(
+                    "Error reading '{}': {}\nSuggestion: Check if the directory exists and is accessible. The token limit is fixed at 50k.",
+                    current_dir.display(),
+                    e
+                );
+                Ok(CallToolResult::from(error_message))
+            }
+        }
+    }
+
     // --- Crates.io Tool Implementations ---
     // Note: These tools now return Result<Value> or Result<String> directly.
     // Error handling uses mcp_attr::bail! or returns Err(...)
@@ -428,26 +498,28 @@ impl McpServer for CorrodeMcpServer {
     async fn tool_search_crates(&self, args: SearchCratesArgs) -> Result<String> {
         let mut query_params = HashMap::new();
         query_params.insert("q".to_string(), args.query.clone());
-        
+
         // Create a crates.io client in a separate scope to ensure MutexGuard is dropped
         let crates_client = {
             let server_data = self.0.lock().unwrap();
             server_data.http_client.clone()
         }; // server_data is dropped here when the block ends
-        
+
         if let Some(page) = args.page {
             query_params.insert("page".to_string(), page.to_string());
         }
         if let Some(per_page) = args.per_page {
             query_params.insert("per_page".to_string(), per_page.to_string());
         }
-        let options = RequestOptions { params: Some(query_params), ..Default::default() };
-        
+        let options = RequestOptions {
+            params: Some(query_params),
+        };
+
         let mut request = crates_client.get("https://crates.io/api/v1/crates");
         if let Some(params) = options.params {
             request = request.query(&params);
         }
-        
+
         match request.send().await {
             Ok(response) => {
                 let status = response.status().as_u16();
@@ -460,7 +532,7 @@ impl McpServer for CorrodeMcpServer {
                     Err(e) => return Ok(format!("Error serializing JSON response: {}", e)),
                 };
                 Ok(format!("Status: {}\n\n{}", status, json_string))
-            },
+            }
             Err(e) => Ok(format!("Error searching crates: {}", e)),
         }
     }
@@ -473,8 +545,15 @@ impl McpServer for CorrodeMcpServer {
             let server_data = self.0.lock().unwrap();
             server_data.http_client.clone()
         };
-        
-        match crates_client.get(&format!("https://crates.io/api/v1/crates/{}", args.crate_name)).send().await {
+
+        match crates_client
+            .get(format!(
+                "https://crates.io/api/v1/crates/{}",
+                args.crate_name
+            ))
+            .send()
+            .await
+        {
             Ok(response) => {
                 let status = response.status().as_u16();
                 let data = match response.json::<serde_json::Value>().await {
@@ -486,7 +565,7 @@ impl McpServer for CorrodeMcpServer {
                     Err(e) => return Ok(format!("Error serializing JSON response: {}", e)),
                 };
                 Ok(format!("Status: {}\n\n{}", status, json_string))
-            },
+            }
             Err(e) => Ok(format!("Error getting crate details: {}", e)),
         }
     }
@@ -499,8 +578,15 @@ impl McpServer for CorrodeMcpServer {
             let server_data = self.0.lock().unwrap();
             server_data.http_client.clone()
         };
-        
-        match crates_client.get(&format!("https://crates.io/api/v1/crates/{}/versions", args.crate_name)).send().await {
+
+        match crates_client
+            .get(format!(
+                "https://crates.io/api/v1/crates/{}/versions",
+                args.crate_name
+            ))
+            .send()
+            .await
+        {
             Ok(response) => {
                 let status = response.status().as_u16();
                 let data = match response.json::<serde_json::Value>().await {
@@ -512,12 +598,12 @@ impl McpServer for CorrodeMcpServer {
                     Err(e) => return Ok(format!("Error serializing JSON response: {}", e)),
                 };
                 Ok(format!("Status: {}\n\n{}", status, json_string))
-            },
+            }
             Err(e) => Ok(format!("Error getting crate versions: {}", e)),
         }
     }
 
-     /// Get dependencies for a specific version of a crate
+    /// Get dependencies for a specific version of a crate
     #[tool]
     async fn get_crate_dependencies(&self, args: GetCrateDependenciesArgs) -> Result<String> {
         // Scope the mutex guard to ensure it's dropped before any await points
@@ -525,8 +611,15 @@ impl McpServer for CorrodeMcpServer {
             let server_data = self.0.lock().unwrap();
             server_data.http_client.clone()
         };
-        
-        match crates_client.get(&format!("https://crates.io/api/v1/crates/{}/{}/dependencies", args.crate_name, args.version)).send().await {
+
+        match crates_client
+            .get(format!(
+                "https://crates.io/api/v1/crates/{}/{}/dependencies",
+                args.crate_name, args.version
+            ))
+            .send()
+            .await
+        {
             Ok(response) => {
                 let status = response.status().as_u16();
                 let data = match response.json::<serde_json::Value>().await {
@@ -538,7 +631,7 @@ impl McpServer for CorrodeMcpServer {
                     Err(e) => return Ok(format!("Error serializing JSON response: {}", e)),
                 };
                 Ok(format!("Status: {}\n\n{}", status, json_string))
-            },
+            }
             Err(e) => Ok(format!("Error getting crate dependencies: {}", e)),
         }
     }
@@ -547,18 +640,26 @@ impl McpServer for CorrodeMcpServer {
     #[tool]
     async fn lookup_crate_docs(&self, args: LookupCrateDocsArgs) -> Result<CallToolResult> {
         let crate_name = args.crate_name.unwrap_or_else(|| "tokio".to_string());
-        let url = format!("https://docs.rs/{}/latest/{}/", crate_name, crate_name.replace('-', "_"));
+        let url = format!(
+            "https://docs.rs/{}/latest/{}/",
+            crate_name,
+            crate_name.replace('-', "_")
+        );
 
         // Get client but release lock before any async operations
         let client = {
             let server_state = self.0.lock().unwrap();
             server_state.http_client.clone()
         };
-        
+
         match client.get(&url).send().await {
             Ok(response) => {
                 if !response.status().is_success() {
-                    let error_text = format!("Error: Could not fetch documentation from {}. HTTP status: {}", url, response.status());
+                    let error_text = format!(
+                        "Error: Could not fetch documentation from {}. HTTP status: {}",
+                        url,
+                        response.status()
+                    );
                     return Ok(CallToolResult::from(error_text));
                 }
 
@@ -567,36 +668,54 @@ impl McpServer for CorrodeMcpServer {
                         // Convert HTML to text
                         let html_result = html2text::from_read(html_content.as_bytes(), 130);
                         if let Err(e) = &html_result {
-                            return Ok(CallToolResult::from(format!("Error converting HTML to text: {}", e)));
+                            return Ok(CallToolResult::from(format!(
+                                "Error converting HTML to text: {}",
+                                e
+                            )));
                         }
                         let text_content = html_result.unwrap();
 
                         // Truncate if too long
                         const MAX_LENGTH: usize = 8000;
                         let truncated_text = if text_content.chars().count() > MAX_LENGTH {
-                            format!("{}\n\n[Content truncated. Full documentation available at {}]",
-                                text_content.chars().take(MAX_LENGTH).collect::<String>(), url)
+                            format!(
+                                "{}\n\n[Content truncated. Full documentation available at {}]",
+                                text_content.chars().take(MAX_LENGTH).collect::<String>(),
+                                url
+                            )
                         } else {
                             text_content
                         };
                         Ok(CallToolResult::from(truncated_text))
                     }
                     Err(e) => {
-                        return Ok(CallToolResult::from(format!("Error reading documentation content: {}", e)));
+                        Ok(CallToolResult::from(format!(
+                            "Error reading documentation content: {}",
+                            e
+                        )))
                     }
                 }
             }
             Err(e) => {
-                 return Ok(CallToolResult::from(format!("Error fetching documentation from {}: {}", url, e)));
+                Ok(CallToolResult::from(format!(
+                    "Error fetching documentation from {}: {}",
+                    url, e
+                )))
             }
         }
     }
 
     /// List function signatures found in the current project directory.
     #[tool]
-    async fn list_function_signatures(&self, _args: Option<ListFunctionSignaturesArgs>) -> Result<CallToolResult> {
+    async fn list_function_signatures(
+        &self,
+        _args: Option<ListFunctionSignaturesArgs>,
+    ) -> Result<CallToolResult> {
         // [REMOVED: function signature logic due to missing dependencies]
-        Ok(CallToolResult::from("Function signature extraction temporarily disabled: missing internal implementation.".to_string()))
+        Ok(CallToolResult::from(
+            "Function signature extraction temporarily disabled: missing internal implementation."
+                .to_string(),
+        ))
     }
 
     /// Search code in the current project using the probe library
@@ -605,15 +724,15 @@ impl McpServer for CorrodeMcpServer {
     /// Use this tool to find patterns, functions, and code blocks in your codebase.
     #[tool]
     async fn search_code_tool(&self, args: ProbeSearchArgs) -> Result<CallToolResult> {
-        use self::mcp::probe_search::{search_code, format_search_results};
-        
+        use self::mcp::probe_search::{format_search_results, search_code};
+
         // Get the current working directory
         let current_dir = self.0.lock().unwrap().current_working_dir.clone();
-        
+
         // Set defaults for optional parameters
         let file_patterns = args.file_patterns.unwrap_or_default();
         let max_results = args.max_results.unwrap_or(20);
-        
+
         // Perform the search using our probe_search module
         match search_code(
             &args.query,
@@ -621,27 +740,28 @@ impl McpServer for CorrodeMcpServer {
             file_patterns,
             max_results,
             args.language,
-        ).await {
+        )
+        .await
+        {
             Ok(results) => {
                 // Format the results into a readable string
                 let formatted_results = format_search_results(&results);
-                
+
                 // If there are no results, provide a helpful message
                 if results.results.is_empty() {
-                    Ok(CallToolResult::from(format!("No results found for query: '{}'. Try broadening your search or using different terms.", args.query)))
+                    Ok(CallToolResult::from(format!(
+                        "No results found for query: '{}'. Try broadening your search or using different terms.",
+                        args.query
+                    )))
                 } else {
                     Ok(CallToolResult::from(formatted_results))
                 }
-            },
+            }
             Err(e) => Ok(CallToolResult::from(format!("Error searching code: {}", e))),
         }
     }
 } // end impl McpServer for CorrodeMcpServer
 
-// Simplified Args struct
-
-
-// Simplified Args struct
 // Helper function to resolve a file path relative to the current directory
 pub fn resolve_path(current_dir: &Path, file_path: &str) -> PathBuf {
     if file_path.starts_with('/') {

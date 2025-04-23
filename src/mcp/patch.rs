@@ -434,7 +434,9 @@ pub fn rebuild_hunks(candidates: &[Candidate<'_>]) -> Vec<Hunk> {
             let (Some(existing_source), Some(new_source)) =
                 (&existing.header.fixed_source, &hunk.header.fixed_source)
             else {
-                tracing::warn!("Potential bad duplicate when rebuilding patch; could be a bug, please check the edit");
+                tracing::warn!(
+                    "Potential bad duplicate when rebuilding patch; could be a bug, please check the edit"
+                );
                 continue;
             };
 

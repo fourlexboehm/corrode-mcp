@@ -40,21 +40,20 @@ impl CommandExecutionContext {
     pub fn new(command: &str, working_directory: &Path) -> Self {
         // Parse command to check if it's compound
         let is_compound = command.contains("&&") || command.contains(';');
-        
+
         // Split into parts for analysis
         let command_parts = if command.trim().contains(' ') {
             command
-                .trim()
                 .split_whitespace()
                 .map(|s| s.to_string())
                 .collect()
         } else {
             vec![command.trim().to_string()]
         };
-        
+
         // Capture current environment variables
         let env_vars = std::env::vars().collect();
-        
+
         Self {
             command: command.to_string(),
             working_directory: working_directory.to_path_buf(),
@@ -64,7 +63,7 @@ impl CommandExecutionContext {
             timestamp: SystemTime::now(),
         }
     }
-    
+
     /// Returns the command's executable name (first part of the command).
     pub fn executable(&self) -> &str {
         if let Some(first_part) = self.command_parts.first() {
@@ -76,19 +75,27 @@ impl CommandExecutionContext {
 }
 
 /// Analyzes a command error and classifies it.
-pub fn classify_error(output: &std::io::Error, _context: &CommandExecutionContext) -> CommandErrorType {
+pub fn classify_error(
+    output: &std::io::Error,
+    _context: &CommandExecutionContext,
+) -> CommandErrorType {
     let error_kind = output.kind();
     let error_string = output.to_string().to_lowercase();
-    
+
     // Check for common error patterns
-    if error_kind == std::io::ErrorKind::NotFound || error_string.contains("not found") 
-        || error_string.contains("command not found") {
+    if error_kind == std::io::ErrorKind::NotFound
+        || error_string.contains("not found")
+        || error_string.contains("command not found")
+    {
         CommandErrorType::CommandNotFound
-    } else if error_kind == std::io::ErrorKind::PermissionDenied 
-        || error_string.contains("permission denied") {
+    } else if error_kind == std::io::ErrorKind::PermissionDenied
+        || error_string.contains("permission denied")
+    {
         CommandErrorType::PermissionDenied
-    } else if error_string.contains("no such file") || error_string.contains("no such directory") 
-        || error_string.contains("does not exist") {
+    } else if error_string.contains("no such file")
+        || error_string.contains("no such directory")
+        || error_string.contains("does not exist")
+    {
         CommandErrorType::PathNotFound
     } else if error_string.contains("shell") {
         CommandErrorType::ShellError
@@ -98,7 +105,10 @@ pub fn classify_error(output: &std::io::Error, _context: &CommandExecutionContex
 }
 
 /// Generates a suggestion for recovering from common command errors.
-pub fn get_recovery_suggestion(error_type: &CommandErrorType, context: &CommandExecutionContext) -> String {
+pub fn get_recovery_suggestion(
+    error_type: &CommandErrorType,
+    context: &CommandExecutionContext,
+) -> String {
     match error_type {
         CommandErrorType::CommandNotFound => {
             // Generate suggestions based on the command that was not found
@@ -106,38 +116,49 @@ pub fn get_recovery_suggestion(error_type: &CommandErrorType, context: &CommandE
             if executable.is_empty() {
                 return "Try specifying a valid command.".to_string();
             }
-            
+
             // Common package managers by platform
             if cfg!(target_os = "macos") {
-                format!("Try installing '{}' with a package manager like Homebrew: 'brew install {}'", 
-                       executable, executable)
+                format!(
+                    "Try installing '{}' with a package manager like Homebrew: 'brew install {}'",
+                    executable, executable
+                )
             } else if cfg!(target_os = "linux") {
-                format!("Try installing '{}' with your system's package manager (apt, yum, dnf, etc.)", 
-                       executable)
+                format!(
+                    "Try installing '{}' with your system's package manager (apt, yum, dnf, etc.)",
+                    executable
+                )
             } else {
-                format!("Ensure '{}' is installed and available in your PATH.", executable)
+                format!(
+                    "Ensure '{}' is installed and available in your PATH.",
+                    executable
+                )
             }
-        },
+        }
         CommandErrorType::PermissionDenied => {
             // For permission errors, suggest chmod or sudo
-            format!("Try adjusting file permissions with 'chmod +x {}' or running with elevated privileges using 'sudo'.", 
-                   context.executable())
-        },
+            format!(
+                "Try adjusting file permissions with 'chmod +x {}' or running with elevated privileges using 'sudo'.",
+                context.executable()
+            )
+        }
         CommandErrorType::PathNotFound => {
             // For path errors, suggest checking paths
             "Verify that the specified file or directory path exists and is accessible.".to_string()
-        },
+        }
         CommandErrorType::ExecutionFailure => {
             // For execution failures, suggest checking arguments
-            "Check command arguments and verify that they are correct for the desired operation.".to_string()
-        },
+            "Check command arguments and verify that they are correct for the desired operation."
+                .to_string()
+        }
         CommandErrorType::ShellError => {
             // For shell errors, provide general shell troubleshooting
             "The shell encountered an error. Try simplifying the command or checking for syntax errors.".to_string()
-        },
+        }
         CommandErrorType::Other => {
             // For other errors, provide a general suggestion
-            "This appears to be an unusual error. Check system resources and command syntax.".to_string()
+            "This appears to be an unusual error. Check system resources and command syntax."
+                .to_string()
         }
     }
 }
@@ -149,7 +170,7 @@ pub fn format_error_message(
     error_type: &CommandErrorType,
 ) -> String {
     let suggestion = get_recovery_suggestion(error_type, context);
-    
+
     format!(
         "Command Execution Failed:
 - Command: '{}'

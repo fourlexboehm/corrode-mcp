@@ -1,0 +1,3 @@
+write file error should return plaintext error not fail
+modify patch_file to patch_files, taking one multifile patch
+add yek

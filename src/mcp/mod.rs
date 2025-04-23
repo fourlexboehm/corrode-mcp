@@ -1,7 +1,8 @@
 #![allow(dead_code)]
-pub mod prompts;
+pub mod bash_exec;
 pub mod crates_io;
+pub mod function_signatures;
 pub mod patch;
 pub mod probe_search;
-pub mod function_signatures;
-pub mod bash_exec;
+pub mod prompts;
+pub mod read_all;
