@@ -20,6 +20,12 @@ The Corrode MCP Server offers powerful capabilities for Rust developers:
   - View all available versions of a crate to ensure compatibility
   - Examine crate dependencies to better understand project requirements
 
+- **Rust Documentation Access**: Access Rust documentation directly.
+  - Look up API documentation from docs.rs
+  - Get detailed information about crate usage and examples
+  - Better understand library interfaces without leaving your AI workflow
+  - Navigate Rust documentation to find the right functions and types
+
 - **Code Analysis**: Analyze Rust code with intelligent tooling.
   - Check Rust code for compilation errors with integrated `cargo check`
   - Identify function signatures throughout your project
@@ -32,14 +38,18 @@ The Corrode MCP Server offers powerful capabilities for Rust developers:
   - Apply changes through unified diffs
   - Navigate the file system with intuitive commands
 
+- **Code Search**: Find relevant code patterns with ease.
+  - Search through codebase using keywords and patterns
+  - Filter by file types and languages to narrow down results
+
 - **Shell Command Execution**: Execute shell commands with full context handling.
   - Run `cargo` commands with proper environment setup
   - Manage directory navigation with automatic context tracking
   - Execute complex shell operations directly from your AI interface
 
 # Installation
+Here are the ways to install the Corrode MCP server:
 
-## From Crates.io (Recommended)
 
 1. Ensure you have Rust and Cargo installed.
 2. Install the server using Cargo:
@@ -48,11 +58,11 @@ The Corrode MCP Server offers powerful capabilities for Rust developers:
    ```
    This will download the crate from crates.io, build it, and install the `corrode-mcp` binary to your Cargo bin directory (usually `~/.cargo/bin/`). Ensure this directory is in your system's PATH.
 
-## From Source
+Alternatively, you can build from source:
 
 1. Clone the repository:
    ```bash
-   git clone <repository_url> # TODO: Add repository URL
+   git clone https://github.com/fourlexboehm/corrode-mcp
    cd corrode-mcp
    ```
 2. Build and install using Cargo:
@@ -66,15 +76,21 @@ The Corrode MCP Server offers powerful capabilities for Rust developers:
 2. Edit `claude_desktop_config.json`: Claude Desktop -> `Settings` -> `Developer` -> `Edit Config`
 3. Add the following configuration under the `mcpServers` key (or merge it if `mcpServers` already exists):
 
+Using the full absolute path to the binary (recommended):
 ```json
 {
   "mcpServers": {
     "corrode-mcp": {
-      "command": "corrode-mcp",
+      "command": "/full/path/to/corrode-mcp",
       "args": ["--mcp"]
     }
   }
 }
+```
+
+Replace `/full/path/to/corrode-mcp` with the actual path to your installed binary. You can find this by running:
+```bash
+which corrode-mcp
 ```
 
 If you want to check MCP log, please use `tail -n 20 -f ~/Library/Logs/Claude/mcp*.log`.
@@ -105,6 +121,12 @@ Here are some practical ways to leverage Corrode MCP with your Rust projects:
 
 # Cargo operations
 > Update my dependencies to the latest versions
+```
+
+## Code Search
+```
+# Find code patterns
+> Search for all functions using tokio::spawn in this project
 ```
 
 ## Rust Project Management
